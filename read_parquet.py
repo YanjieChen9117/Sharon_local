@@ -56,7 +56,7 @@ def read_parquet_sample(file_path, n_rows=10):
 
 if __name__ == "__main__":
     # 指定parquet文件路径
-    parquet_file = "yellow_tripdata_2025-01.parquet"
+    parquet_file = "/Users/yanjiechen/Documents/Github/Sharon_local/data/yellow_tripdata_2024-01.parquet"
     
     # 读取并显示前10行
     read_parquet_sample(parquet_file, n_rows=10)
