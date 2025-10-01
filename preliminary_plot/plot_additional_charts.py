@@ -287,13 +287,13 @@ def main():
     print("=" * 80)
     
     # 读取数据
-    csv_path = '/Users/yanjiechen/Documents/Github/Sharon_local/月度出租车数据统计.csv'
+    csv_path = '/Users/yanjiechen/Documents/Github/Sharon_local/preliminary_plot/月度出租车数据统计.csv'
     print(f"\n读取数据: {csv_path}")
     df = read_monthly_stats(csv_path)
     print(f"数据行数: {len(df)}")
     
     # 输出目录
-    output_dir = '/Users/yanjiechen/Documents/Github/Sharon_local'
+    output_dir = '/Users/yanjiechen/Documents/Github/Sharon_local/preliminary_plot'
     
     print("\n" + "-" * 80)
     print("开始绘制图表...")
