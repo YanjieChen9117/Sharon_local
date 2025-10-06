@@ -1,0 +1,4 @@
+,avg_speed,total_trips,avg_duration,avg_distance,cbd_inside_ratio,cbd_in_ratio,cbd_out_ratio,cbd_non_ratio,total_revenue,avg_fare
+Pre-policy,13.1465,4072.432,15.8773,3.9187,0.4091,0.1358,0.1931,0.262,117860.7829,20.7801
+Post-policy,13.057,3934.1643,15.7237,3.8739,0.4138,0.1356,0.182,0.2686,114272.326,20.5568
+Change (%),-0.68,-3.4,-0.97,-1.14,1.14,-0.16,-5.72,2.51,-3.04,-1.07

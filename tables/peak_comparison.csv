@@ -1,0 +1,3 @@
+Period,Pre_avg_speed,Post_avg_speed,avg_speed_change_%,Pre_cbd_inside_ratio,Post_cbd_inside_ratio,cbd_inside_ratio_change_%
+Peak hours,11.18263662835081,11.064828184915426,-1.05,0.3944200091159302,0.40151853789819636,1.8
+Off-peak hours,14.12866788354674,14.053346697813849,-0.53,0.4164360970076689,0.4198929879951242,0.83
