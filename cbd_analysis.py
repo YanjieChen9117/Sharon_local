@@ -10,6 +10,8 @@ Date: 2025-10-06
 
 import pandas as pd
 import numpy as np
+import matplotlib
+matplotlib.use('Agg')  # 使用非交互式后端，不显示窗口
 import matplotlib.pyplot as plt
 import warnings
 from datetime import datetime
@@ -45,15 +47,61 @@ data_path = '/Users/yanjiechen/Documents/Github/Sharon_local/data/hourly_taxi_su
 print("Loading data from: {}".format(data_path))
 
 try:
-    df = pd.read_csv(data_path)
-    print("✅ Data loaded successfully, shape: {}".format(df.shape))
+    df_raw = pd.read_csv(data_path)
+    print("✅ Data loaded successfully, shape: {}".format(df_raw.shape))
 except Exception as e:
     print("❌ Data loading failed: {}".format(e))
     exit(1)
 
 # Parse datetime column
-df['pickup_hour'] = pd.to_datetime(df['pickup_hour'])
-df = df.sort_values('pickup_hour').reset_index(drop=True)
+df_raw['pickup_hour'] = pd.to_datetime(df_raw['pickup_hour'])
+df_raw = df_raw.sort_values('pickup_hour').reset_index(drop=True)
+
+print("\n🔄 Merging Yellow and Green Taxi data by hour...")
+print("Original data has {} rows (2 rows per hour - Yellow and Green)".format(len(df_raw)))
+
+# Aggregate data by hour with weighted averaging
+# For each hour, we need to combine Yellow and Green taxi data
+# Weighted average for ratios and speeds, sum for counts and revenues
+
+# Group by pickup_hour
+grouped = df_raw.groupby('pickup_hour')
+
+# Calculate weighted aggregations
+df = pd.DataFrame({
+    # Sum metrics
+    'total_trips': grouped['total_trips'].sum(),
+    'total_revenue': grouped['total_revenue'].sum(),
+    
+    # Weighted averages (weighted by total_trips)
+    'avg_distance': grouped.apply(lambda x: np.average(x['avg_distance'], weights=x['total_trips'])),
+    'avg_passengers': grouped.apply(lambda x: np.average(x['avg_passengers'], weights=x['total_trips'])),
+    'avg_duration': grouped.apply(lambda x: np.average(x['avg_duration'], weights=x['total_trips'])),
+    'avg_speed': grouped.apply(lambda x: np.average(x['avg_speed'], weights=x['total_trips'])),
+    'avg_tip_rate': grouped.apply(lambda x: np.average(x['avg_tip_rate'], weights=x['total_trips'])),
+    'avg_fare': grouped.apply(lambda x: np.average(x['avg_fare'], weights=x['total_trips'])),
+    
+    # CBD interaction ratios (weighted by total_trips)
+    'cbd_inside_ratio': grouped.apply(lambda x: np.average(x['cbd_inside_ratio'], weights=x['total_trips'])),
+    'cbd_in_ratio': grouped.apply(lambda x: np.average(x['cbd_in_ratio'], weights=x['total_trips'])),
+    'cbd_out_ratio': grouped.apply(lambda x: np.average(x['cbd_out_ratio'], weights=x['total_trips'])),
+    'cbd_non_ratio': grouped.apply(lambda x: np.average(x['cbd_non_ratio'], weights=x['total_trips'])),
+    
+    # CBD neighbor interaction ratios (weighted by total_trips)
+    'cbd_neighbor_inside_ratio': grouped.apply(lambda x: np.average(x['cbd_neighbor_inside_ratio'], weights=x['total_trips'])),
+    'cbd_neighbor_in_ratio': grouped.apply(lambda x: np.average(x['cbd_neighbor_in_ratio'], weights=x['total_trips'])),
+    'cbd_neighbor_out_ratio': grouped.apply(lambda x: np.average(x['cbd_neighbor_out_ratio'], weights=x['total_trips'])),
+    'cbd_neighbor_non_ratio': grouped.apply(lambda x: np.average(x['cbd_neighbor_non_ratio'], weights=x['total_trips'])),
+    
+    # Taxi type distribution
+    'yellow_ratio': grouped.apply(lambda x: np.average(x['yellow_ratio'], weights=x['total_trips'])),
+    'green_ratio': grouped.apply(lambda x: np.average(x['green_ratio'], weights=x['total_trips'])),
+}).reset_index()
+
+print("✅ Merged data shape: {}".format(df.shape))
+print("   Each hour now has 1 row combining Yellow and Green taxi data")
+print("   Yellow taxi average proportion: {:.2%}".format(df['yellow_ratio'].mean()))
+print("   Green taxi average proportion: {:.2%}".format(df['green_ratio'].mean()))
 
 # Basic info
 print("\nData time range: {} to {}".format(df['pickup_hour'].min(), df['pickup_hour'].max()))
@@ -82,6 +130,7 @@ print("-" * 40)
 # Key metrics
 key_metrics = ['avg_speed', 'total_trips', 'avg_duration', 'avg_distance',
                'cbd_inside_ratio', 'cbd_in_ratio', 'cbd_out_ratio', 'cbd_non_ratio',
+               'cbd_neighbor_inside_ratio', 'cbd_neighbor_in_ratio', 'cbd_neighbor_out_ratio', 'cbd_neighbor_non_ratio',
                'total_revenue', 'avg_fare']
 
 # Overall pre/post comparison
@@ -142,6 +191,18 @@ pre_trips = df[~df['post']]['total_trips']
 post_trips = df[df['post']]['total_trips']
 t_stat_trips, p_val_trips = stats.ttest_ind(pre_trips, post_trips)
 print("Total Trips - t-statistic: {:.4f}, p-value: {:.4f}".format(t_stat_trips, p_val_trips))
+
+# Test for CBD neighbor in ratio difference (substitution effect)
+pre_neighbor_in = df[~df['post']]['cbd_neighbor_in_ratio']
+post_neighbor_in = df[df['post']]['cbd_neighbor_in_ratio']
+t_stat_neighbor_in, p_val_neighbor_in = stats.ttest_ind(pre_neighbor_in, post_neighbor_in)
+print("CBD Neighbor In Ratio - t-statistic: {:.4f}, p-value: {:.4f}".format(t_stat_neighbor_in, p_val_neighbor_in))
+
+# Test for CBD neighbor out ratio difference (substitution effect)
+pre_neighbor_out = df[~df['post']]['cbd_neighbor_out_ratio']
+post_neighbor_out = df[df['post']]['cbd_neighbor_out_ratio']
+t_stat_neighbor_out, p_val_neighbor_out = stats.ttest_ind(pre_neighbor_out, post_neighbor_out)
+print("CBD Neighbor Out Ratio - t-statistic: {:.4f}, p-value: {:.4f}".format(t_stat_neighbor_out, p_val_neighbor_out))
 
 # ============================================================================
 # 3. Simple Difference-in-Differences
@@ -207,6 +268,10 @@ daily_df = df.groupby('date').agg({
     'cbd_in_ratio': 'mean', 
     'cbd_out_ratio': 'mean',
     'cbd_non_ratio': 'mean',
+    'cbd_neighbor_inside_ratio': 'mean',
+    'cbd_neighbor_in_ratio': 'mean',
+    'cbd_neighbor_out_ratio': 'mean',
+    'cbd_neighbor_non_ratio': 'mean',
     'pickup_hour': 'first'  # Keep one datetime for plotting
 }).reset_index()
 
@@ -265,7 +330,61 @@ axes[1, 1].tick_params(axis='x', rotation=45)
 
 plt.tight_layout()
 plt.savefig('figures/time_series_overview_daily.png', dpi=300, bbox_inches='tight')
-plt.show()
+plt.close()
+
+# Create CBD Neighbor visualization
+print("Creating CBD Neighbor interaction visualization...")
+fig, axes = plt.subplots(2, 2, figsize=(20, 12))
+
+# Plot 1: CBD Neighbor In Ratio (Daily)
+axes[0, 0].plot(daily_df['date_dt'], daily_df['cbd_neighbor_in_ratio'], linewidth=2, color='purple', alpha=0.8)
+axes[0, 0].axvline(policy_date, color='red', linestyle='--', linewidth=3, label='Policy Implementation')
+axes[0, 0].set_title('Daily CBD Neighbor In Ratio Time Series', fontsize=14, fontweight='bold')
+axes[0, 0].set_ylabel('CBD Neighbor In Ratio')
+axes[0, 0].legend()
+axes[0, 0].grid(True, alpha=0.3)
+axes[0, 0].tick_params(axis='x', rotation=45)
+
+# Plot 2: CBD Neighbor Out Ratio (Daily)
+axes[0, 1].plot(daily_df['date_dt'], daily_df['cbd_neighbor_out_ratio'], linewidth=2, color='brown', alpha=0.8)
+axes[0, 1].axvline(policy_date, color='red', linestyle='--', linewidth=3, label='Policy Implementation')
+axes[0, 1].set_title('Daily CBD Neighbor Out Ratio Time Series', fontsize=14, fontweight='bold')
+axes[0, 1].set_ylabel('CBD Neighbor Out Ratio')
+axes[0, 1].legend()
+axes[0, 1].grid(True, alpha=0.3)
+axes[0, 1].tick_params(axis='x', rotation=45)
+
+# Plot 3: CBD Neighbor Inside Ratio (Daily)
+axes[1, 0].plot(daily_df['date_dt'], daily_df['cbd_neighbor_inside_ratio'], linewidth=2, color='teal', alpha=0.8)
+axes[1, 0].axvline(policy_date, color='red', linestyle='--', linewidth=3, label='Policy Implementation')
+axes[1, 0].set_title('Daily CBD Neighbor Inside Ratio Time Series', fontsize=14, fontweight='bold')
+axes[1, 0].set_ylabel('CBD Neighbor Inside Ratio')
+axes[1, 0].legend()
+axes[1, 0].grid(True, alpha=0.3)
+axes[1, 0].tick_params(axis='x', rotation=45)
+
+# Plot 4: CBD Neighbor Interaction Ratios (Daily Stacked Area)
+neighbor_ratios = ['cbd_neighbor_inside_ratio', 'cbd_neighbor_in_ratio', 'cbd_neighbor_out_ratio', 'cbd_neighbor_non_ratio']
+neighbor_colors = ['#17becf', '#9467bd', '#8c564b', '#e377c2']
+neighbor_labels = ['CBD Neighbor Inside', 'CBD Neighbor In', 'CBD Neighbor Out', 'CBD Neighbor Non']
+
+# Create stacked area plot
+bottom = np.zeros(len(daily_df))
+for i, ratio in enumerate(neighbor_ratios):
+    axes[1, 1].fill_between(daily_df['date_dt'], bottom, bottom + daily_df[ratio], 
+                           alpha=0.8, label=neighbor_labels[i], color=neighbor_colors[i])
+    bottom += daily_df[ratio]
+
+axes[1, 1].axvline(policy_date, color='black', linestyle='--', linewidth=3, label='Policy Implementation')
+axes[1, 1].set_title('Daily CBD Neighbor Interaction Ratios', fontsize=14, fontweight='bold')
+axes[1, 1].set_ylabel('Cumulative Ratio')
+axes[1, 1].legend()
+axes[1, 1].grid(True, alpha=0.3)
+axes[1, 1].tick_params(axis='x', rotation=45)
+
+plt.tight_layout()
+plt.savefig('figures/cbd_neighbor_time_series.png', dpi=300, bbox_inches='tight')
+plt.close()
 
 # Create weekly moving averages for even smoother trends
 print("Creating weekly moving averages for trend analysis...")
@@ -275,6 +394,8 @@ window_size = 7  # 7-day moving average
 daily_df_sorted['speed_ma7'] = daily_df_sorted['avg_speed'].rolling(window=window_size, center=True).mean()
 daily_df_sorted['trips_ma7'] = daily_df_sorted['total_trips'].rolling(window=window_size, center=True).mean()
 daily_df_sorted['cbd_inside_ma7'] = daily_df_sorted['cbd_inside_ratio'].rolling(window=window_size, center=True).mean()
+daily_df_sorted['cbd_neighbor_in_ma7'] = daily_df_sorted['cbd_neighbor_in_ratio'].rolling(window=window_size, center=True).mean()
+daily_df_sorted['cbd_neighbor_out_ma7'] = daily_df_sorted['cbd_neighbor_out_ratio'].rolling(window=window_size, center=True).mean()
 
 # Plot 2: Weekly Moving Averages
 fig, axes = plt.subplots(1, 3, figsize=(21, 7))
@@ -311,7 +432,34 @@ axes[2].tick_params(axis='x', rotation=45)
 
 plt.tight_layout()
 plt.savefig('figures/time_series_moving_averages.png', dpi=300, bbox_inches='tight')
-plt.show()
+plt.close()
+
+# CBD Neighbor Moving Averages
+fig, axes = plt.subplots(1, 2, figsize=(18, 7))
+
+# CBD Neighbor In with moving average
+axes[0].plot(daily_df_sorted['date_dt'], daily_df_sorted['cbd_neighbor_in_ratio'], alpha=0.3, color='lavender', label='Daily')
+axes[0].plot(daily_df_sorted['date_dt'], daily_df_sorted['cbd_neighbor_in_ma7'], linewidth=3, color='purple', label='7-day MA')
+axes[0].axvline(policy_date, color='red', linestyle='--', linewidth=3, label='Policy Implementation')
+axes[0].set_title('CBD Neighbor In Ratio: Daily vs 7-Day Moving Average', fontsize=14, fontweight='bold')
+axes[0].set_ylabel('CBD Neighbor In Ratio')
+axes[0].legend()
+axes[0].grid(True, alpha=0.3)
+axes[0].tick_params(axis='x', rotation=45)
+
+# CBD Neighbor Out with moving average
+axes[1].plot(daily_df_sorted['date_dt'], daily_df_sorted['cbd_neighbor_out_ratio'], alpha=0.3, color='wheat', label='Daily')
+axes[1].plot(daily_df_sorted['date_dt'], daily_df_sorted['cbd_neighbor_out_ma7'], linewidth=3, color='brown', label='7-day MA')
+axes[1].axvline(policy_date, color='red', linestyle='--', linewidth=3, label='Policy Implementation')
+axes[1].set_title('CBD Neighbor Out Ratio: Daily vs 7-Day Moving Average', fontsize=14, fontweight='bold')
+axes[1].set_ylabel('CBD Neighbor Out Ratio')
+axes[1].legend()
+axes[1].grid(True, alpha=0.3)
+axes[1].tick_params(axis='x', rotation=45)
+
+plt.tight_layout()
+plt.savefig('figures/cbd_neighbor_moving_averages.png', dpi=300, bbox_inches='tight')
+plt.close()
 
 # Create monthly aggregation for long-term trends
 print("Creating monthly aggregated data for long-term trend analysis...")
@@ -322,7 +470,11 @@ monthly_df = df.groupby('year_month').agg({
     'cbd_inside_ratio': 'mean',
     'cbd_in_ratio': 'mean',
     'cbd_out_ratio': 'mean',
-    'cbd_non_ratio': 'mean'
+    'cbd_non_ratio': 'mean',
+    'cbd_neighbor_inside_ratio': 'mean',
+    'cbd_neighbor_in_ratio': 'mean',
+    'cbd_neighbor_out_ratio': 'mean',
+    'cbd_neighbor_non_ratio': 'mean'
 }).reset_index()
 
 # Convert period to datetime for plotting
@@ -360,12 +512,38 @@ axes[2].tick_params(axis='x', rotation=45)
 
 plt.tight_layout()
 plt.savefig('figures/time_series_monthly_trends.png', dpi=300, bbox_inches='tight')
-plt.show()
+plt.close()
+
+# CBD Neighbor Monthly Trends
+fig, axes = plt.subplots(1, 2, figsize=(18, 7))
+
+# Monthly CBD Neighbor In Ratio
+axes[0].plot(monthly_df['date_dt'], monthly_df['cbd_neighbor_in_ratio'], 'o-', linewidth=3, markersize=8, color='purple')
+axes[0].axvline(policy_date, color='red', linestyle='--', linewidth=3, label='Policy Implementation')
+axes[0].set_title('Monthly CBD Neighbor In Ratio Trend', fontsize=14, fontweight='bold')
+axes[0].set_ylabel('CBD Neighbor In Ratio')
+axes[0].legend()
+axes[0].grid(True, alpha=0.3)
+axes[0].tick_params(axis='x', rotation=45)
+
+# Monthly CBD Neighbor Out Ratio
+axes[1].plot(monthly_df['date_dt'], monthly_df['cbd_neighbor_out_ratio'], 'o-', linewidth=3, markersize=8, color='brown')
+axes[1].axvline(policy_date, color='red', linestyle='--', linewidth=3, label='Policy Implementation')
+axes[1].set_title('Monthly CBD Neighbor Out Ratio Trend', fontsize=14, fontweight='bold')
+axes[1].set_ylabel('CBD Neighbor Out Ratio')
+axes[1].legend()
+axes[1].grid(True, alpha=0.3)
+axes[1].tick_params(axis='x', rotation=45)
+
+plt.tight_layout()
+plt.savefig('figures/cbd_neighbor_monthly_trends.png', dpi=300, bbox_inches='tight')
+plt.close()
 
 print("✅ Created multiple time series visualizations:")
 print("   - Daily aggregated time series")
 print("   - 7-day moving averages")
 print("   - Monthly trend analysis")
+print("   - CBD Neighbor interaction trends")
 
 # Box plots for before/after comparison
 fig, axes = plt.subplots(1, 3, figsize=(18, 6))
@@ -393,7 +571,7 @@ axes[2].grid(True, alpha=0.3)
 
 plt.tight_layout()
 plt.savefig('figures/distribution_comparison.png', dpi=300, bbox_inches='tight')
-plt.show()
+plt.close()
 
 # ============================================================================
 # 5. Generate Report
@@ -407,101 +585,277 @@ exec_summary = {
     'speed_change_pct': pct_change['avg_speed'],
     'trips_change_pct': pct_change['total_trips'],
     'cbd_inside_change_pct': pct_change['cbd_inside_ratio'],
+    'cbd_neighbor_in_change_pct': pct_change['cbd_neighbor_in_ratio'],
+    'cbd_neighbor_out_change_pct': pct_change['cbd_neighbor_out_ratio'],
     'did_peak_estimate': did_estimate,
     'did_cbd_estimate': cbd_did_estimate,
     'speed_pvalue': p_val_speed,
     'cbd_pvalue': p_val_cbd,
-    'trips_pvalue': p_val_trips
+    'trips_pvalue': p_val_trips,
+    'neighbor_in_pvalue': p_val_neighbor_in,
+    'neighbor_out_pvalue': p_val_neighbor_out
 }
 
-# Create markdown report
-report_content = f"""# NYC CBD Congestion Pricing Policy Impact Analysis - Simplified
+# Create markdown report using string concatenation to avoid f-string issues
+# Determine significance and changes
+speed_sig = 'Significant' if exec_summary['speed_pvalue'] < 0.05 else 'Not significant'
+trips_sig = 'Significant' if exec_summary['trips_pvalue'] < 0.05 else 'Not significant'
+cbd_sig = 'Significant' if exec_summary['cbd_pvalue'] < 0.05 else 'Not significant'
+neighbor_in_sig = 'Significant' if exec_summary['neighbor_in_pvalue'] < 0.05 else 'Not significant'
+neighbor_out_sig = 'Significant' if exec_summary['neighbor_out_pvalue'] < 0.05 else 'Not significant'
 
-**Analysis Date:** {datetime.now().strftime('%Y-%m-%d')}  
+# Substitution effect interpretation
+has_substitution = ((exec_summary['cbd_neighbor_in_change_pct'] > 1 or exec_summary['cbd_neighbor_out_change_pct'] > 1) and 
+                   (exec_summary['neighbor_in_pvalue'] < 0.05 or exec_summary['neighbor_out_pvalue'] < 0.05))
+substitution_interp = ('Evidence of substitution effect - passengers avoiding CBD by using neighboring areas' if has_substitution 
+                      else 'No strong evidence of substitution effect')
+substitution_detailed = ('There is evidence of a substitution effect. Passengers appear to be avoiding the CBD congestion charge by shifting their trips to neighboring areas. This suggests the policy is having its intended deterrent effect on CBD usage, but may be displacing congestion to adjacent areas.' 
+                        if has_substitution else 
+                        'There is no strong evidence of a substitution effect. The changes in CBD neighbor area usage are not statistically significant or substantial, suggesting passengers are not systematically avoiding the CBD by using neighboring areas.')
+
+# Speed effects
+speed_effect_text = 'statistically significant' if exec_summary['speed_pvalue'] < 0.05 else 'no statistically significant'
+cbd_change_dir = 'decrease' if exec_summary['cbd_inside_change_pct'] < 0 else 'increase'
+cbd_stat_sig = 'statistically significant' if exec_summary['cbd_pvalue'] < 0.05 else 'not statistically significant'
+trips_change_dir = 'decreased' if exec_summary['trips_change_pct'] < 0 else 'increased'
+trips_suggest = 'demand reduction' if exec_summary['trips_change_pct'] < 0 else 'increased demand'
+
+# Conclusions
+speed_conclusion = 'Evidence of speed improvements' if exec_summary['speed_change_pct'] > 0 else 'No evidence of speed improvements'
+usage_conclusion = 'Evidence of reduced CBD usage' if exec_summary['cbd_inside_change_pct'] < 0 else 'No evidence of reduced CBD usage'
+substitution_conclusion = ('Evidence suggests passengers are avoiding CBD by using neighboring areas' if has_substitution 
+                          else 'No strong evidence of substitution to neighboring areas')
+impact_conclusion = 'mixed results' if abs(exec_summary['speed_change_pct']) < 1 else 'clear impacts'
+
+# Store dataframe values to avoid quote issues in .format()
+time_min = df['pickup_hour'].min().strftime('%Y-%m-%d')
+time_max = df['pickup_hour'].max().strftime('%Y-%m-%d')
+total_hours = len(df)
+pre_hours = (~df['post']).sum()
+post_hours = df['post'].sum()
+yellow_prop = df['yellow_ratio'].mean()
+green_prop = df['green_ratio'].mean()
+hours_ratio = pre_hours / post_hours
+
+report_content = """# NYC CBD Congestion Pricing Policy Impact Analysis - Comprehensive
+
+**Analysis Date:** {}  
 **Policy Implementation Date:** January 5, 2025  
-**Data Source:** NYC Yellow Taxi Hourly Summary Data  
+**Data Source:** NYC Yellow & Green Taxi Hourly Summary Data (Combined)  
 
 ## Executive Summary
 
 ### Key Findings
 
 1. **Average Speed Impact:**
-   - Overall change: {exec_summary['speed_change_pct']:.2f}%
-   - Statistical significance: {'Significant' if exec_summary['speed_pvalue'] < 0.05 else 'Not significant'} (p = {exec_summary['speed_pvalue']:.4f})
-   - Peak hours DiD effect: {exec_summary['did_peak_estimate']:.4f} mph
+   - Overall change: {:.2f}%
+   - Statistical significance: {} (p = {:.4f})
+   - Peak hours DiD effect: {:.4f} mph
 
 2. **Trip Volume Impact:**
-   - Total trips change: {exec_summary['trips_change_pct']:.2f}%
-   - Statistical significance: {'Significant' if exec_summary['trips_pvalue'] < 0.05 else 'Not significant'} (p = {exec_summary['trips_pvalue']:.4f})
+   - Total trips change: {:.2f}%
+   - Statistical significance: {} (p = {:.4f})
 
 3. **CBD Usage Patterns:**
-   - CBD internal trips change: {exec_summary['cbd_inside_change_pct']:.2f}%
-   - Statistical significance: {'Significant' if exec_summary['cbd_pvalue'] < 0.05 else 'Not significant'} (p = {exec_summary['cbd_pvalue']:.4f})
-   - CBD exposure DiD effect: {exec_summary['did_cbd_estimate']:.4f} mph
+   - CBD internal trips change: {:.2f}%
+   - Statistical significance: {} (p = {:.4f})
+   - CBD exposure DiD effect: {:.4f} mph
+
+4. **Substitution Effect (CBD Neighbor Areas):**
+   - CBD Neighbor In ratio change: {:.2f}%
+   - Statistical significance: {} (p = {:.4f})
+   - CBD Neighbor Out ratio change: {:.2f}%
+   - Statistical significance: {} (p = {:.4f})
+   - **Interpretation:** {}
 
 ## Data Description
 
-- **Dataset:** Hourly aggregated NYC Yellow Taxi data
-- **Time Period:** {df['pickup_hour'].min().strftime('%Y-%m-%d')} to {df['pickup_hour'].max().strftime('%Y-%m-%d')}
-- **Total Observations:** {len(df):,} hours
-- **Pre-policy Period:** {(~df['post']).sum():,} hours
-- **Post-policy Period:** {df['post'].sum():,} hours
+- **Dataset:** Hourly aggregated NYC Yellow & Green Taxi data (weighted combination)
+- **Time Period:** {} to {}
+- **Total Observations:** {:,} hours
+- **Pre-policy Period:** {:,} hours
+- **Post-policy Period:** {:,} hours
+- **Yellow Taxi Proportion:** {:.2%}
+- **Green Taxi Proportion:** {:.2%}
 
 ## Methodology
 
-### 1. Descriptive Analysis
-- Simple before/after comparisons
-- Peak vs off-peak hour analysis
-- Statistical t-tests for significance
+### 1. Data Aggregation
+Yellow and Green taxi data are combined using weighted averaging:
+- **Sum metrics** (total_trips, total_revenue): Direct summation
+- **Average metrics** (avg_speed, avg_distance, etc.): Weighted by total_trips
+- **Ratio metrics** (cbd_inside_ratio, etc.): Weighted by total_trips
 
-### 2. Difference-in-Differences
-- Peak intensity comparison (peak vs off-peak hours)
-- CBD exposure comparison (high vs low CBD interaction)
+This ensures that taxi types with more trips have proportionally more influence on the combined metrics.
+
+### 2. Descriptive Analysis
+- Simple before/after comparisons using t-tests
+- Peak vs off-peak hour analysis
+- Statistical significance testing at α = 0.05
+
+### 3. Difference-in-Differences (DiD) Analysis
+
+#### 3.1 DiD Methodology Overview
+
+The Difference-in-Differences (DiD) method estimates the causal effect of a policy by comparing the change in outcomes over time between a treatment group and a control group.
+
+**Basic DiD Formula:**
+
+$$
+\\text{{DiD}} = (\\bar{{Y}}_{{\\text{{treatment, post}}}} - \\bar{{Y}}_{{\\text{{treatment, pre}}}}) - (\\bar{{Y}}_{{\\text{{control, post}}}} - \\bar{{Y}}_{{\\text{{control, pre}}}})
+$$
+
+Where:
+- $\\bar{{Y}}_{{\\text{{treatment, post}}}}$ = Average outcome for treatment group after policy
+- $\\bar{{Y}}_{{\\text{{treatment, pre}}}}$ = Average outcome for treatment group before policy
+- $\\bar{{Y}}_{{\\text{{control, post}}}}$ = Average outcome for control group after policy
+- $\\bar{{Y}}_{{\\text{{control, pre}}}}$ = Average outcome for control group before policy
+
+**Key Assumption:** Parallel trends - without the policy, treatment and control groups would have followed similar trends.
+
+#### 3.2 DiD Implementation in This Analysis
+
+**Analysis 1: Peak vs Off-Peak Hours**
+
+- **Treatment Group:** Peak hours (7-10 AM, 4-7 PM) - more affected by congestion pricing
+- **Control Group:** Off-peak hours - less affected by congestion pricing
+- **Outcome Variable:** Average speed (mph)
+
+Formula:
+$$
+\\text{{DiD}}_{{\\text{{peak}}}} = (\\text{{Speed}}_{{\\text{{peak, post}}}} - \\text{{Speed}}_{{\\text{{peak, pre}}}}) - (\\text{{Speed}}_{{\\text{{offpeak, post}}}} - \\text{{Speed}}_{{\\text{{offpeak, pre}}}})
+$$
+
+**Result:** DiD = {:.4f} mph
+
+**Analysis 2: CBD Exposure**
+
+- **Treatment Group:** High CBD exposure hours (above median CBD interaction)
+- **Control Group:** Low CBD exposure hours (below median CBD interaction)
+- **Outcome Variable:** Average speed (mph)
+
+Formula:
+$$
+\\text{{DiD}}_{{\\text{{CBD}}}} = (\\text{{Speed}}_{{\\text{{high CBD, post}}}} - \\text{{Speed}}_{{\\text{{high CBD, pre}}}}) - (\\text{{Speed}}_{{\\text{{low CBD, post}}}} - \\text{{Speed}}_{{\\text{{low CBD, pre}}}})
+$$
+
+**Result:** DiD = {:.4f} mph
+
+#### 3.3 Discussion: Equal Sample Size Requirement
+
+**Professor's Concern:** "DiD requires equal number of observations in pre- and post-policy periods."
+
+**Evaluation:**
+
+1. **Theoretical Requirement:** DiD does NOT strictly require equal sample sizes. The method is valid as long as:
+   - The parallel trends assumption holds
+   - Both periods have sufficient observations for reliable estimation
+   - Standard errors are properly calculated
+
+2. **Our Data:**
+   - Pre-policy: {:,} hours
+   - Post-policy: {:,} hours
+   - Ratio: {:.2f}:1
+
+3. **Implications:**
+   - **Unequal sample sizes are acceptable** in DiD analysis
+   - Larger pre-policy sample provides better baseline estimation
+   - Standard t-tests and regression-based DiD handle unequal samples naturally
+   - **Concern:** If sample sizes are very imbalanced, statistical power may be reduced
+   - **Mitigation:** We have substantial observations in both periods (5,000+ hours each)
+
+4. **Best Practices:**
+   - Use regression-based DiD for formal inference: $Y_{{it}} = \\beta_0 + \\beta_1 \\text{{Post}}_t + \\beta_2 \\text{{Treatment}}_i + \\beta_3 (\\text{{Post}}_t \\times \\text{{Treatment}}_i) + \\epsilon_{{it}}$
+   - Where $\\beta_3$ is the DiD estimate
+   - This approach properly accounts for unequal sample sizes and provides standard errors
+   - Consider time-varying confounders and seasonality
+
+**Conclusion:** The equal sample size "requirement" is a misconception. Our analysis is methodologically sound with unequal sample sizes.
 
 ## Results
 
 ### Pre/Post Comparison
-{comparison_table.to_string()}
+{}
 
 ### Peak vs Off-Peak Analysis
-{peak_comparison_df.to_string()}
+{}
 
 ## Policy Impact Assessment
 
 ### Speed Effects
-The analysis shows {'statistically significant' if exec_summary['speed_pvalue'] < 0.05 else 'no statistically significant'} changes in average speeds following the CBD congestion pricing implementation. The overall speed change was {exec_summary['speed_change_pct']:.2f}%.
+The analysis shows {} changes in average speeds following the CBD congestion pricing implementation. The overall speed change was {:.2f}%.
 
 ### CBD Usage Patterns
-CBD internal trip ratios show a {'decrease' if exec_summary['cbd_inside_change_pct'] < 0 else 'increase'} of {abs(exec_summary['cbd_inside_change_pct']):.2f}%, which is {'statistically significant' if exec_summary['cbd_pvalue'] < 0.05 else 'not statistically significant'}.
+CBD internal trip ratios show a {} of {:.2f}%, which is {}.
 
 ### Trip Volume Effects
-Overall taxi trip volumes {'decreased' if exec_summary['trips_change_pct'] < 0 else 'increased'} by {abs(exec_summary['trips_change_pct']):.2f}%, suggesting {'demand reduction' if exec_summary['trips_change_pct'] < 0 else 'increased demand'}.
+Overall taxi trip volumes {} by {:.2f}%, suggesting {}.
+
+### Substitution Effect Analysis (CBD Neighbor Areas)
+
+To detect whether passengers are avoiding the congestion charge by using neighboring areas instead of CBD:
+
+**CBD Neighbor In Ratio (trips entering CBD neighbor areas):**
+- Change: {:+.2f}%
+- Statistical significance: {} (p = {:.4f})
+
+**CBD Neighbor Out Ratio (trips leaving CBD neighbor areas):**
+- Change: {:+.2f}%
+- Statistical significance: {} (p = {:.4f})
+
+**Interpretation:**
+{}
 
 ## Difference-in-Differences Results
 
-1. **Peak Hours Effect:** {exec_summary['did_peak_estimate']:.4f} mph differential impact during peak hours
-2. **CBD Exposure Effect:** {exec_summary['did_cbd_estimate']:.4f} mph differential impact for high CBD exposure areas
+1. **Peak Hours Effect:** {:.4f} mph differential impact during peak hours
+2. **CBD Exposure Effect:** {:.4f} mph differential impact for high CBD exposure areas
 
 ## Conclusions
 
-Based on the simplified analysis of NYC Yellow Taxi hourly data:
+Based on the comprehensive analysis of NYC Yellow & Green Taxi hourly data:
 
-1. **Speed Effects:** {'Evidence of speed improvements' if exec_summary['speed_change_pct'] > 0 else 'No evidence of speed improvements'} following policy implementation
-2. **Usage Patterns:** {'Evidence of reduced CBD usage' if exec_summary['cbd_inside_change_pct'] < 0 else 'No evidence of reduced CBD usage'} as intended by the policy
-3. **Overall Impact:** The policy shows {'mixed results' if abs(exec_summary['speed_change_pct']) < 1 else 'clear impacts'} in the initial implementation period
+1. **Speed Effects:** {} following policy implementation
+2. **Usage Patterns:** {} as intended by the policy
+3. **Substitution Effect:** {}
+4. **Overall Impact:** The policy shows {} in the initial implementation period
 
 ## Limitations
 
 1. **Simplified Analysis:** This analysis uses basic statistical methods and may not capture complex causal relationships
 2. **Confounding Factors:** Weather, holidays, and other concurrent changes not controlled for
-3. **Short-term Data:** Limited post-policy observation period
-4. **Data Scope:** Only Yellow Taxi data, excluding other transportation modes
+3. **Short-term Data:** Limited post-policy observation period (approximately 8 months)
+4. **Data Scope:** Only Yellow & Green Taxi data, excluding other transportation modes (Uber, Lyft, public transit, private vehicles)
+5. **Parallel Trends Assumption:** DiD assumes parallel trends, which we have not formally tested
+6. **Seasonality:** Monthly and seasonal patterns may confound the policy effect
 
 ---
 
 **Analysis conducted by:** Yanjie Chen
 **Files generated:** Tables in `tables/`, Figures in `figures/`
-"""
+""".format(
+    datetime.now().strftime('%Y-%m-%d'),
+    exec_summary['speed_change_pct'], speed_sig, exec_summary['speed_pvalue'], exec_summary['did_peak_estimate'],
+    exec_summary['trips_change_pct'], trips_sig, exec_summary['trips_pvalue'],
+    exec_summary['cbd_inside_change_pct'], cbd_sig, exec_summary['cbd_pvalue'], exec_summary['did_cbd_estimate'],
+    exec_summary['cbd_neighbor_in_change_pct'], neighbor_in_sig, exec_summary['neighbor_in_pvalue'],
+    exec_summary['cbd_neighbor_out_change_pct'], neighbor_out_sig, exec_summary['neighbor_out_pvalue'],
+    substitution_interp,
+    time_min, time_max,
+    total_hours, pre_hours, post_hours,
+    yellow_prop, green_prop,
+    exec_summary['did_peak_estimate'], exec_summary['did_cbd_estimate'],
+    pre_hours, post_hours, hours_ratio,
+    comparison_table.to_string(), peak_comparison_df.to_string(),
+    speed_effect_text, exec_summary['speed_change_pct'],
+    cbd_change_dir, abs(exec_summary['cbd_inside_change_pct']), cbd_stat_sig,
+    trips_change_dir, abs(exec_summary['trips_change_pct']), trips_suggest,
+    exec_summary['cbd_neighbor_in_change_pct'], neighbor_in_sig, exec_summary['neighbor_in_pvalue'],
+    exec_summary['cbd_neighbor_out_change_pct'], neighbor_out_sig, exec_summary['neighbor_out_pvalue'],
+    substitution_detailed,
+    exec_summary['did_peak_estimate'], exec_summary['did_cbd_estimate'],
+    speed_conclusion, usage_conclusion, substitution_conclusion, impact_conclusion
+)
 
 # Save report
 with open('reports/cbd_taxi_simplified_analysis.md', 'w', encoding='utf-8') as f:
@@ -531,6 +885,10 @@ print(f"   • Average Speed: {exec_summary['speed_change_pct']:+.2f}% change (p
 print(f"   • Total Trips: {exec_summary['trips_change_pct']:+.2f}% change (p = {exec_summary['trips_pvalue']:.4f})")
 print(f"   • CBD Internal Trips: {exec_summary['cbd_inside_change_pct']:+.2f}% change (p = {exec_summary['cbd_pvalue']:.4f})")
 
+print(f"\n🔄 SUBSTITUTION EFFECT (CBD NEIGHBOR):")
+print(f"   • CBD Neighbor In: {exec_summary['cbd_neighbor_in_change_pct']:+.2f}% change (p = {exec_summary['neighbor_in_pvalue']:.4f})")
+print(f"   • CBD Neighbor Out: {exec_summary['cbd_neighbor_out_change_pct']:+.2f}% change (p = {exec_summary['neighbor_out_pvalue']:.4f})")
+
 print(f"\n📈 DIFFERENCE-IN-DIFFERENCES:")
 print(f"   • Peak Hours Effect: {exec_summary['did_peak_estimate']:+.4f} mph")
 print(f"   • CBD Exposure Effect: {exec_summary['did_cbd_estimate']:+.4f} mph")
@@ -540,5 +898,8 @@ print(f"   • Tables: tables/")
 print(f"   • Figures: figures/")
 print(f"   • Report: reports/cbd_taxi_simplified_analysis.md")
 
-print(f"\n✅ SIMPLIFIED ANALYSIS COMPLETE!")
+print(f"\n✅ COMPREHENSIVE ANALYSIS COMPLETE!")
+print(f"   • Combined Yellow & Green Taxi data")
+print(f"   • CBD Neighbor substitution effect analysis included")
+print(f"   • DiD methodology fully documented")
 print("="*80)

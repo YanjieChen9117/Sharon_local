@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-NYC黄色出租车数据按小时汇总处理脚本
+NYC出租车数据按小时汇总处理脚本（支持Yellow & Green Taxi）
 
 功能：
-1. 循环读取data/文件夹中的每月出租车数据
+1. 循环读取data/文件夹中的每月出租车数据（Yellow & Green）
 2. 进行数据清洗和特征工程
 3. 为每个行程打上CBD交互标签（inside, in, out, non）
 4. 按小时汇总数据
 5. 保存所有月份的小时汇总数据供后续分析
 
+数据源：
+- Yellow Taxi: yellow_tripdata_*.parquet
+- Green Taxi: green_tripdata_*.parquet
+
 作者: AI Assistant
-日期: 2025-10-01
+日期: 2025-10-08
 """
 
 import pandas as pd
@@ -31,9 +35,13 @@ CBD_ZONES = {
     231,  45, 209,  13, 261,  87,  12,  88
 }
 
+CBD_NEIGHBORHOODS = {
+    140, 141, 142, 143, 237
+}
+
 
 class HourlyTaxiDataProcessor:
-    """按小时处理出租车数据的处理器"""
+    """按小时处理出租车数据的处理器（支持Yellow & Green Taxi）"""
     
     def __init__(self, data_dir):
         """
@@ -44,6 +52,37 @@ class HourlyTaxiDataProcessor:
         """
         self.data_dir = data_dir
         self.hourly_stats = []  # 存储所有小时的汇总数据
+    
+    def normalize_taxi_data(self, df, taxi_type):
+        """
+        标准化不同类型出租车的字段名
+        
+        参数:
+            df: 原始数据框
+            taxi_type: 出租车类型 ('yellow' 或 'green')
+            
+        返回:
+            DataFrame: 标准化后的数据框
+        """
+        df = df.copy()
+        
+        if taxi_type == 'green':
+            # Green taxi使用lpep前缀，需要重命名为标准字段名
+            df = df.rename(columns={
+                'lpep_pickup_datetime': 'pickup_datetime',
+                'lpep_dropoff_datetime': 'dropoff_datetime'
+            })
+        elif taxi_type == 'yellow':
+            # Yellow taxi使用tpep前缀，需要重命名为标准字段名
+            df = df.rename(columns={
+                'tpep_pickup_datetime': 'pickup_datetime',
+                'tpep_dropoff_datetime': 'dropoff_datetime'
+            })
+        
+        # 添加taxi_type列用于区分数据来源
+        df['taxi_type'] = taxi_type
+        
+        return df
         
     def clean_data(self, df, year_month=None):
         """
@@ -73,9 +112,9 @@ class HourlyTaxiDataProcessor:
                 else:
                     month_end = pd.Timestamp(year=year, month=month+1, day=1)
                 
-                # 统计日期范围外的记录
-                date_valid = (df['tpep_pickup_datetime'] >= month_start) & \
-                            (df['tpep_pickup_datetime'] < month_end)
+                # 统计日期范围外的记录（使用标准化后的字段名）
+                date_valid = (df['pickup_datetime'] >= month_start) & \
+                            (df['pickup_datetime'] < month_end)
                 invalid_dates = (~date_valid).sum()
                 
                 if invalid_dates > 0:
@@ -104,7 +143,7 @@ class HourlyTaxiDataProcessor:
     
     def add_cbd_labels(self, df):
         """
-        为每个行程添加CBD交互标签
+        为每个行程添加CBD交互标签和CBD neighbor交互标签
         
         CBD交互类型:
         - 'inside': 上车和下车都在CBD区域内
@@ -112,17 +151,23 @@ class HourlyTaxiDataProcessor:
         - 'out':    上车在CBD，下车不在CBD（离开CBD）
         - 'non':    上车和下车都不在CBD
         
+        CBD Neighbor交互类型:
+        - 'neighbor_inside': 上车和下车都在CBD neighbor区域内
+        - 'neighbor_in':     上车不在CBD neighbor，下车在CBD neighbor（进入CBD neighbor）
+        - 'neighbor_out':    上车在CBD neighbor，下车不在CBD neighbor（离开CBD neighbor）
+        - 'neighbor_non':    上车和下车都不在CBD neighbor
+        
         参数:
             df: 数据框
             
         返回:
-            DataFrame: 添加了cbd_interaction列的数据框
+            DataFrame: 添加了cbd_interaction和cbd_neighbor_interaction列的数据框
         """
         # 判断上车和下车地点是否在CBD
         pickup_in_cbd = df['PULocationID'].isin(CBD_ZONES)
         dropoff_in_cbd = df['DOLocationID'].isin(CBD_ZONES)
         
-        # 根据组合情况分配标签
+        # 根据组合情况分配CBD标签
         conditions = [
             (pickup_in_cbd & dropoff_in_cbd),      # 都在CBD内
             (~pickup_in_cbd & dropoff_in_cbd),     # 进入CBD
@@ -134,12 +179,35 @@ class HourlyTaxiDataProcessor:
         
         df['cbd_interaction'] = np.select(conditions, choices, default='unknown')
         
+        # 判断上车和下车地点是否在CBD Neighbor
+        pickup_in_neighbor = df['PULocationID'].isin(CBD_NEIGHBORHOODS)
+        dropoff_in_neighbor = df['DOLocationID'].isin(CBD_NEIGHBORHOODS)
+        
+        # 根据组合情况分配CBD Neighbor标签
+        neighbor_conditions = [
+            (pickup_in_neighbor & dropoff_in_neighbor),      # 都在CBD neighbor内
+            (~pickup_in_neighbor & dropoff_in_neighbor),     # 进入CBD neighbor
+            (pickup_in_neighbor & ~dropoff_in_neighbor),     # 离开CBD neighbor
+            (~pickup_in_neighbor & ~dropoff_in_neighbor)     # 都不在CBD neighbor
+        ]
+        
+        neighbor_choices = ['neighbor_inside', 'neighbor_in', 'neighbor_out', 'neighbor_non']
+        
+        df['cbd_neighbor_interaction'] = np.select(neighbor_conditions, neighbor_choices, default='unknown')
+        
         # 打印CBD交互统计
         cbd_counts = df['cbd_interaction'].value_counts()
         print(f"  CBD交互分布: inside={cbd_counts.get('inside', 0):,}, "
               f"in={cbd_counts.get('in', 0):,}, "
               f"out={cbd_counts.get('out', 0):,}, "
               f"non={cbd_counts.get('non', 0):,}")
+        
+        # 打印CBD Neighbor交互统计
+        neighbor_counts = df['cbd_neighbor_interaction'].value_counts()
+        print(f"  CBD Neighbor交互分布: inside={neighbor_counts.get('neighbor_inside', 0):,}, "
+              f"in={neighbor_counts.get('neighbor_in', 0):,}, "
+              f"out={neighbor_counts.get('neighbor_out', 0):,}, "
+              f"non={neighbor_counts.get('neighbor_non', 0):,}")
         
         return df
     
@@ -153,9 +221,9 @@ class HourlyTaxiDataProcessor:
         返回:
             DataFrame: 添加了派生特征的数据框
         """
-        # 计算行程时长（分钟）
+        # 计算行程时长（分钟）- 使用标准化后的字段名
         df['trip_duration_min'] = (
-            df['tpep_dropoff_datetime'] - df['tpep_pickup_datetime']
+            df['dropoff_datetime'] - df['pickup_datetime']
         ).dt.total_seconds() / 60
         
         # 移除时长异常的记录（小于0或大于180分钟）
@@ -176,8 +244,8 @@ class HourlyTaxiDataProcessor:
         )
         df['tip_rate'] = df['tip_rate'].replace([np.inf, -np.inf], np.nan)
         
-        # 提取小时信息
-        df['pickup_hour'] = df['tpep_pickup_datetime'].dt.floor('H')  # 向下取整到小时
+        # 提取小时信息 - 使用标准化后的字段名
+        df['pickup_hour'] = df['pickup_datetime'].dt.floor('H')  # 向下取整到小时
         
         return df
     
@@ -242,9 +310,31 @@ class HourlyTaxiDataProcessor:
                 lambda x: (x['cbd_interaction'] == 'non').sum() / len(x)
             ),
             
+            # CBD Neighbor交互比例
+            'cbd_neighbor_inside_ratio': hourly_groups.apply(
+                lambda x: (x['cbd_neighbor_interaction'] == 'neighbor_inside').sum() / len(x)
+            ),
+            'cbd_neighbor_in_ratio': hourly_groups.apply(
+                lambda x: (x['cbd_neighbor_interaction'] == 'neighbor_in').sum() / len(x)
+            ),
+            'cbd_neighbor_out_ratio': hourly_groups.apply(
+                lambda x: (x['cbd_neighbor_interaction'] == 'neighbor_out').sum() / len(x)
+            ),
+            'cbd_neighbor_non_ratio': hourly_groups.apply(
+                lambda x: (x['cbd_neighbor_interaction'] == 'neighbor_non').sum() / len(x)
+            ),
+            
             # 额外的有用指标
             'total_revenue': hourly_groups['total_amount'].sum(),
             'avg_fare': hourly_groups['fare_amount'].mean(),
+            
+            # 出租车类型分布（如果有多种类型）
+            'yellow_ratio': hourly_groups.apply(
+                lambda x: (x['taxi_type'] == 'yellow').sum() / len(x) if 'taxi_type' in x.columns else 1.0
+            ),
+            'green_ratio': hourly_groups.apply(
+                lambda x: (x['taxi_type'] == 'green').sum() / len(x) if 'taxi_type' in x.columns else 0.0
+            ),
         })
         
         # 重置索引，使pickup_hour成为一列
@@ -254,7 +344,7 @@ class HourlyTaxiDataProcessor:
     
     def process_monthly_file(self, file_path):
         """
-        处理单个月份的数据文件
+        处理单个月份的数据文件（支持Yellow & Green Taxi）
         
         参数:
             file_path: parquet文件路径
@@ -268,37 +358,52 @@ class HourlyTaxiDataProcessor:
             print(f"正在处理: {filename}")
             print(f"{'='*80}")
             
-            # 从文件名提取年月信息（如: yellow_tripdata_2025-01.parquet -> 2025-01）
+            # 识别出租车类型
+            if 'yellow_tripdata' in filename:
+                taxi_type = 'yellow'
+            elif 'green_tripdata' in filename:
+                taxi_type = 'green'
+            else:
+                print(f"⚠ 无法识别出租车类型，跳过文件: {filename}")
+                return None
+            
+            print(f"出租车类型: {taxi_type.upper()} TAXI")
+            
+            # 从文件名提取年月信息
             year_month = None
             try:
-                year_month = filename.replace('yellow_tripdata_', '').replace('.parquet', '')
+                year_month = filename.replace('yellow_tripdata_', '').replace('green_tripdata_', '').replace('.parquet', '')
                 print(f"文件对应月份: {year_month}")
             except:
                 print("⚠ 无法从文件名提取年月信息，将跳过日期验证")
             
             # 1. 读取数据
-            print("步骤 1/6: 读取数据...")
+            print("步骤 1/7: 读取数据...")
             df = pd.read_parquet(file_path)
             
-            # 2. 数据清洗（包含日期验证）
-            print("步骤 2/6: 数据清洗与日期验证...")
+            # 2. 标准化字段名
+            print("步骤 2/7: 标准化字段名...")
+            df = self.normalize_taxi_data(df, taxi_type)
+            
+            # 3. 数据清洗（包含日期验证）
+            print("步骤 3/7: 数据清洗与日期验证...")
             df = self.clean_data(df, year_month=year_month)
             
-            # 3. 删除不必要的列
-            print("步骤 3/6: 删除不必要的列...")
+            # 4. 删除不必要的列
+            print("步骤 4/7: 删除不必要的列...")
             df = self.remove_unnecessary_columns(df)
             
-            # 4. 添加CBD标签
-            print("步骤 4/6: 添加CBD交互标签...")
+            # 5. 添加CBD标签
+            print("步骤 5/7: 添加CBD交互标签...")
             df = self.add_cbd_labels(df)
             
-            # 5. 特征工程
-            print("步骤 5/6: 特征工程...")
+            # 6. 特征工程
+            print("步骤 6/7: 特征工程...")
             df = self.feature_engineering(df)
             print(f"  特征工程后: {len(df):,} 条记录")
             
-            # 6. 按小时汇总
-            print("步骤 6/6: 按小时汇总...")
+            # 7. 按小时汇总
+            print("步骤 7/7: 按小时汇总...")
             hourly_summary = self.aggregate_by_hour(df)
             
             if hourly_summary is not None:
@@ -316,24 +421,35 @@ class HourlyTaxiDataProcessor:
     
     def process_all_files(self):
         """
-        处理data目录下的所有parquet文件
+        处理data目录下的所有parquet文件（Yellow & Green Taxi）
         """
         print("\n" + "="*80)
-        print("NYC黄色出租车数据按小时汇总处理")
+        print("NYC出租车数据按小时汇总处理 (Yellow & Green Taxi)")
         print("="*80)
         
-        # 获取所有parquet文件
-        pattern = os.path.join(self.data_dir, "yellow_tripdata_*.parquet")
-        files = sorted(glob.glob(pattern))
+        # 获取所有yellow和green出租车数据文件
+        yellow_pattern = os.path.join(self.data_dir, "yellow_tripdata_*.parquet")
+        green_pattern = os.path.join(self.data_dir, "green_tripdata_*.parquet")
+        
+        yellow_files = glob.glob(yellow_pattern)
+        green_files = glob.glob(green_pattern)
+        
+        # 合并并排序所有文件
+        files = sorted(yellow_files + green_files)
         
         if not files:
-            print(f"\n❌ 错误: 在 {self.data_dir} 目录下未找到任何 yellow_tripdata_*.parquet 文件")
+            print(f"\n❌ 错误: 在 {self.data_dir} 目录下未找到任何出租车数据文件")
             print("请确保数据文件已放置在正确的目录中。")
             return
         
         print(f"\n找到 {len(files)} 个数据文件:")
+        print(f"  - Yellow Taxi: {len(yellow_files)} 个文件")
+        print(f"  - Green Taxi: {len(green_files)} 个文件")
+        print("\n文件列表:")
         for i, file in enumerate(files, 1):
-            print(f"  {i}. {os.path.basename(file)}")
+            basename = os.path.basename(file)
+            taxi_type = "Yellow" if "yellow" in basename else "Green"
+            print(f"  {i}. [{taxi_type}] {basename}")
         
         # 处理每个文件
         for i, file_path in enumerate(files, 1):
@@ -396,6 +512,14 @@ class HourlyTaxiDataProcessor:
         print(f"  进入CBD (in): {all_hourly_data['cbd_in_ratio'].mean():.2%}")
         print(f"  离开CBD (out): {all_hourly_data['cbd_out_ratio'].mean():.2%}")
         print(f"  非CBD (non): {all_hourly_data['cbd_non_ratio'].mean():.2%}")
+        print(f"\nCBD Neighbor交互平均比例:")
+        print(f"  CBD Neighbor内部 (inside): {all_hourly_data['cbd_neighbor_inside_ratio'].mean():.2%}")
+        print(f"  进入CBD Neighbor (in): {all_hourly_data['cbd_neighbor_in_ratio'].mean():.2%}")
+        print(f"  离开CBD Neighbor (out): {all_hourly_data['cbd_neighbor_out_ratio'].mean():.2%}")
+        print(f"  非CBD Neighbor (non): {all_hourly_data['cbd_neighbor_non_ratio'].mean():.2%}")
+        print(f"\n出租车类型分布:")
+        print(f"  Yellow Taxi平均比例: {all_hourly_data['yellow_ratio'].mean():.2%}")
+        print(f"  Green Taxi平均比例: {all_hourly_data['green_ratio'].mean():.2%}")
         print("="*80)
         
         return all_hourly_data

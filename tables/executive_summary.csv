@@ -1,2 +1,2 @@
-speed_change_pct,trips_change_pct,cbd_inside_change_pct,did_peak_estimate,did_cbd_estimate,speed_pvalue,cbd_pvalue,trips_pvalue
--0.68,-3.4,1.14,-0.04248725770249351,-0.7941182771385655,0.14658078937137858,0.00011985334728877222,0.00010027157970729815
+speed_change_pct,trips_change_pct,cbd_inside_change_pct,cbd_neighbor_in_change_pct,cbd_neighbor_out_change_pct,did_peak_estimate,did_cbd_estimate,speed_pvalue,cbd_pvalue,trips_pvalue,neighbor_in_pvalue,neighbor_out_pvalue
+-0.64,-3.19,1.89,1.22,-0.84,-0.0598491976452884,-0.7957580645696041,0.17001814813718008,1.6052225987121025e-09,0.00028617840622401693,0.0009394890417795611,0.11922482001470384
