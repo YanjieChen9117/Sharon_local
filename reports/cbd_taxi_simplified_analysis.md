@@ -1,6 +1,6 @@
 # NYC CBD Congestion Pricing Policy Impact Analysis - Comprehensive
 
-**Analysis Date:** 2025-10-08  
+**Analysis Date:** 2025-10-09  
 **Policy Implementation Date:** January 5, 2025  
 **Data Source:** NYC Yellow & Green Taxi Hourly Summary Data (Combined)  
 

@@ -528,7 +528,7 @@ class HourlyTaxiDataProcessor:
 def main():
     """主函数"""
     # 设置数据目录
-    data_dir = "/Users/yanjiechen/Documents/Github/Sharon_local/data"
+    data_dir = "/Users/sophiayeung/Desktop/sharon/Sharon_local/data"
     
     # 检查目录是否存在
     if not os.path.exists(data_dir):

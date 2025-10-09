@@ -43,7 +43,7 @@ print("\n📊 1. Data Loading and Quality Check")
 print("-" * 40)
 
 # Load data
-data_path = '/Users/yanjiechen/Documents/Github/Sharon_local/data/hourly_taxi_summary.csv'
+data_path = '/Users/sophiayeung/Desktop/sharon/Sharon_local/data/hourly_taxi_summary.csv'
 print("Loading data from: {}".format(data_path))
 
 try:
