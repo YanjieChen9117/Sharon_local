@@ -722,6 +722,7 @@ Where:
 - **Outcome Variable:** Average speed (mph)
 
 Formula:
+
 $$
 \\text{{DiD}}_{{\\text{{peak}}}} = (\\text{{Speed}}_{{\\text{{peak, post}}}} - \\text{{Speed}}_{{\\text{{peak, pre}}}}) - (\\text{{Speed}}_{{\\text{{offpeak, post}}}} - \\text{{Speed}}_{{\\text{{offpeak, pre}}}})
 $$
@@ -735,6 +736,7 @@ $$
 - **Outcome Variable:** Average speed (mph)
 
 Formula:
+
 $$
 \\text{{DiD}}_{{\\text{{CBD}}}} = (\\text{{Speed}}_{{\\text{{high CBD, post}}}} - \\text{{Speed}}_{{\\text{{high CBD, pre}}}}) - (\\text{{Speed}}_{{\\text{{low CBD, post}}}} - \\text{{Speed}}_{{\\text{{low CBD, pre}}}})
 $$
