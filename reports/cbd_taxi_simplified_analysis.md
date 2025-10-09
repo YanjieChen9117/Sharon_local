@@ -58,51 +58,63 @@ This ensures that taxi types with more trips have proportionally more influence 
 
 #### 3.1 DiD Methodology Overview
 
-The Difference-in-Differences (DiD) method estimates the causal effect of a policy by comparing the change in outcomes over time between a treatment group and a control group.
+The Difference-in-Differences (DiD) method estimates the causal effect of a policy by comparing the change in outcomes over time between a treatment group and a control group. The analysis employs a regression-based framework to estimate the average treatment effect.
 
-**Basic DiD Formula:**
+**Regression-Based DiD Model:**
+
+The DiD estimator is implemented through the following linear regression specification:
 
 $$
-\text{DiD} = (\bar{Y}_{\text{treatment, post}} - \bar{Y}_{\text{treatment, pre}}) - (\bar{Y}_{\text{control, post}} - \bar{Y}_{\text{control, pre}})
+Y_{it} = \alpha + \beta D_i + \gamma Post_t + \delta (D_i \times Post_t) + \epsilon_{it}
 $$
 
 Where:
-- $\bar{Y}_{\text{treatment, post}}$ = Average outcome for treatment group after policy
-- $\bar{Y}_{\text{treatment, pre}}$ = Average outcome for treatment group before policy
-- $\bar{Y}_{\text{control, post}}$ = Average outcome for control group after policy
-- $\bar{Y}_{\text{control, pre}}$ = Average outcome for control group before policy
+- $Y_{it}$ = Outcome variable for observation $i$ at time $t$
+- $D_i$ = Treatment indicator (1 if observation $i$ belongs to treatment group, 0 otherwise)
+- $Post_t$ = Time indicator (1 if time $t$ is post-policy period, 0 otherwise)
+- $\alpha$ = Constant term (baseline outcome for control group in pre-policy period)
+- $\beta$ = Treatment group fixed effect (difference between treatment and control groups in pre-policy period)
+- $\gamma$ = Time fixed effect (common time trend affecting both groups)
+- $\delta$ = Average treatment effect (the DiD estimator)
+- $\epsilon_{it}$ = Error term
 
-**Key Assumption:** Parallel trends - without the policy, treatment and control groups would have followed similar trends.
+The coefficient $\delta$ represents the average treatment effect, capturing the differential impact of the policy on the treatment group relative to the control group, net of any common time trends. This formulation is equivalent to the traditional DiD formula when there are only two groups and two periods, but provides greater flexibility for incorporating additional controls and extending to multiple periods.
+
+**Key Assumption:** The parallel trends assumption requires that, in the absence of the treatment, the difference between treatment and control groups would remain constant over time.
 
 #### 3.2 DiD Implementation in This Analysis
 
 **Analysis 1: Peak vs Off-Peak Hours**
 
-- **Treatment Group:** Peak hours (7-10 AM, 4-7 PM) - more affected by congestion pricing
-- **Control Group:** Off-peak hours - less affected by congestion pricing
-- **Outcome Variable:** Average speed (mph)
-
-Formula:
+The regression specification for peak hour analysis is:
 
 $$
-\text{DiD}_{\text{peak}} = (\text{Speed}_{\text{peak, post}} - \text{Speed}_{\text{peak, pre}}) - (\text{Speed}_{\text{offpeak, post}} - \text{Speed}_{\text{offpeak, pre}})
+\text{Speed}_{it} = \alpha + \beta \text{Peak}_i + \gamma \text{Post}_t + \delta (\text{Peak}_i \times \text{Post}_t) + \epsilon_{it}
 $$
 
-**Result:** DiD = -0.0598 mph
+Where:
+- $\text{Speed}_{it}$ = Average speed for hour $i$ at time $t$
+- $\text{Peak}_i$ = Binary indicator for peak hours (1 if 7-10 AM or 4-7 PM, 0 otherwise)
+- $\text{Post}_t$ = Binary indicator for post-policy period
+- $\delta$ = Treatment effect of congestion pricing on peak hour speeds
+
+**Result:** $\hat{\delta} = -0.0598$ mph (peak hour differential impact)
 
 **Analysis 2: CBD Exposure**
 
-- **Treatment Group:** High CBD exposure hours (above median CBD interaction)
-- **Control Group:** Low CBD exposure hours (below median CBD interaction)
-- **Outcome Variable:** Average speed (mph)
-
-Formula:
+The regression specification for CBD exposure analysis is:
 
 $$
-\text{DiD}_{\text{CBD}} = (\text{Speed}_{\text{high CBD, post}} - \text{Speed}_{\text{high CBD, pre}}) - (\text{Speed}_{\text{low CBD, post}} - \text{Speed}_{\text{low CBD, pre}})
+\text{Speed}_{it} = \alpha + \beta \text{HighCBD}_i + \gamma \text{Post}_t + \delta (\text{HighCBD}_i \times \text{Post}_t) + \epsilon_{it}
 $$
 
-**Result:** DiD = -0.7958 mph
+Where:
+- $\text{Speed}_{it}$ = Average speed for hour $i$ at time $t$
+- $\text{HighCBD}_i$ = Binary indicator for high CBD exposure (1 if above median CBD interaction, 0 otherwise)
+- $\text{Post}_t$ = Binary indicator for post-policy period
+- $\delta$ = Treatment effect of congestion pricing on high CBD exposure areas
+
+**Result:** $\hat{\delta} = -0.7958$ mph (CBD exposure differential impact)
 
 #### 3.3 Discussion: Equal Sample Size Requirement
 
@@ -128,10 +140,10 @@ $$
    - **Mitigation:** We have substantial observations in both periods (5,000+ hours each)
 
 4. **Best Practices:**
-   - Use regression-based DiD for formal inference: $Y_{it} = \beta_0 + \beta_1 \text{Post}_t + \beta_2 \text{Treatment}_i + \beta_3 (\text{Post}_t \times \text{Treatment}_i) + \epsilon_{it}$
+   - Use regression-based DiD for formal inference: $Y_{it} = \beta_0 + sample sizes and provides standard errors
+   - Consider time-var\beta_1 \text{Post}_t + \beta_2 \text{Treatment}_i + \beta_3 (\text{Post}_t \times \text{Treatment}_i) + \epsilon_{it}$
    - Where $\beta_3$ is the DiD estimate
-   - This approach properly accounts for unequal sample sizes and provides standard errors
-   - Consider time-varying confounders and seasonality
+   - This approach properly accounts for unequal ying confounders and seasonality
 
 **Conclusion:** The equal sample size "requirement" is a misconception. Our analysis is methodologically sound with unequal sample sizes.
 
