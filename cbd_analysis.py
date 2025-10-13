@@ -971,7 +971,7 @@ for key, value in day_type_tests.items():
     exec_summary[f'{key}_t_stat'] = value['t_stat']
     exec_summary[f'{key}_p_val'] = value['p_val']
 
-# Create markdown report using string concatenation to avoid f-string issues
+# Create simplified markdown report
 # Determine significance and changes
 speed_sig = 'Significant' if exec_summary['speed_pvalue'] < 0.05 else 'Not significant'
 trips_sig = 'Significant' if exec_summary['trips_pvalue'] < 0.05 else 'Not significant'
@@ -1002,19 +1002,10 @@ substitution_conclusion = ('Evidence suggests passengers are avoiding CBD by usi
                           else 'No strong evidence of substitution to neighboring areas')
 impact_conclusion = 'mixed results' if abs(exec_summary['speed_change_pct']) < 1 else 'clear impacts'
 
-# Store dataframe values to avoid quote issues in .format()
-time_min = df['pickup_hour'].min().strftime('%Y-%m-%d')
-time_max = df['pickup_hour'].max().strftime('%Y-%m-%d')
-total_hours = len(df)
-pre_hours = (~df['post']).sum()
-post_hours = df['post'].sum()
-yellow_prop = df['yellow_ratio'].mean()
-green_prop = df['green_ratio'].mean()
-hours_ratio = pre_hours / post_hours
+# Create a simplified report
+report_content = f"""# NYC CBD Congestion Pricing Policy Impact Analysis - Comprehensive
 
-report_content = """# NYC CBD Congestion Pricing Policy Impact Analysis - Comprehensive
-
-**Analysis Date:** {}  
+**Analysis Date:** {datetime.now().strftime('%Y-%m-%d')}  
 **Policy Implementation Date:** January 5, 2025  
 **Data Source:** NYC Yellow & Green Taxi Hourly Summary Data (Combined)  
 
@@ -1023,259 +1014,79 @@ report_content = """# NYC CBD Congestion Pricing Policy Impact Analysis - Compre
 ### Key Findings
 
 1. **Average Speed Impact:**
-   - Overall change: {:.2f}%
-   - Statistical significance: {} (p = {:.4f})
-   - Peak hours DiD effect: {:.4f} mph
+   - Overall change: {exec_summary['speed_change_pct']:.2f}%
+   - Statistical significance: {speed_sig} (p = {exec_summary['speed_pvalue']:.4f})
+   - Peak hours DiD effect: {exec_summary['did_peak_estimate']:.4f} mph
 
 2. **Trip Volume Impact:**
-   - Total trips change: {:.2f}%
-   - Statistical significance: {} (p = {:.4f})
+   - Total trips change: {exec_summary['trips_change_pct']:.2f}%
+   - Statistical significance: {trips_sig} (p = {exec_summary['trips_pvalue']:.4f})
 
 3. **CBD Usage Patterns:**
-   - CBD internal trips change: {:.2f}%
-   - Statistical significance: {} (p = {:.4f})
-   - CBD exposure DiD effect: {:.4f} mph
+   - CBD internal trips change: {exec_summary['cbd_inside_change_pct']:.2f}%
+   - Statistical significance: {cbd_sig} (p = {exec_summary['cbd_pvalue']:.4f})
+   - CBD exposure DiD effect: {exec_summary['did_cbd_estimate']:.4f} mph
 
 4. **Substitution Effect (CBD Neighbor Areas):**
-   - CBD Neighbor In ratio change: {:.2f}%
-   - Statistical significance: {} (p = {:.4f})
-   - CBD Neighbor Out ratio change: {:.2f}%
-   - Statistical significance: {} (p = {:.4f})
-   - **Interpretation:** {}
+   - CBD Neighbor In ratio change: {exec_summary['cbd_neighbor_in_change_pct']:.2f}%
+   - Statistical significance: {neighbor_in_sig} (p = {exec_summary['neighbor_in_pvalue']:.4f})
+   - CBD Neighbor Out ratio change: {exec_summary['cbd_neighbor_out_change_pct']:.2f}%
+   - Statistical significance: {neighbor_out_sig} (p = {exec_summary['neighbor_out_pvalue']:.4f})
+   - **Interpretation:** {substitution_interp}
 
 5. **Day Type Analysis (Weekday/Weekend/Holiday):**
-   - Weekday vs Weekend DiD effect: {:.4f} mph
-   - CBD usage weekday vs weekend DiD: {:.4f}
-   - Holiday data availability: {} ({} hours)
+   - Weekday vs Weekend DiD effect: {exec_summary['did_weekday_weekend_estimate']:.4f} mph
+   - CBD usage weekday vs weekend DiD: {exec_summary['did_cbd_daytype_estimate']:.4f}
+   - Holiday data availability: {'Sufficient' if weekday_holiday_did is not None else 'Insufficient'} ({df[df['day_type'] == 'Holiday'].shape[0]} hours)
 
 ## Data Description
 
 - **Dataset:** Hourly aggregated NYC Yellow & Green Taxi data (weighted combination)
-- **Time Period:** {} to {}
-- **Total Observations:** {:,} hours
-- **Pre-policy Period:** {:,} hours
-- **Post-policy Period:** {:,} hours
-- **Yellow Taxi Proportion:** {:.2%}
-- **Green Taxi Proportion:** {:.2%}
+- **Time Period:** {df['pickup_hour'].min().strftime('%Y-%m-%d')} to {df['pickup_hour'].max().strftime('%Y-%m-%d')}
+- **Total Observations:** {len(df):,} hours
+- **Pre-policy Period:** {(~df['post']).sum():,} hours
+- **Post-policy Period:** {df['post'].sum():,} hours
+- **Yellow Taxi Proportion:** {df['yellow_ratio'].mean():.2%}
+- **Green Taxi Proportion:** {df['green_ratio'].mean():.2%}
 
-## Methodology
-
-### 1. Data Aggregation
-Yellow and Green taxi data are combined using weighted averaging:
-- **Sum metrics** (total_trips, total_revenue): Direct summation
-- **Average metrics** (avg_speed, avg_distance, etc.): Weighted by total_trips
-- **Ratio metrics** (cbd_inside_ratio, etc.): Weighted by total_trips
-
-This ensures that taxi types with more trips have proportionally more influence on the combined metrics.
-
-### 2. Descriptive Analysis
-- Simple before/after comparisons using t-tests
-- Peak vs off-peak hour analysis
-- Statistical significance testing at α = 0.05
-
-### 3. Difference-in-Differences (DiD) Analysis
-
-#### 3.1 DiD Methodology Overview
-
-The Difference-in-Differences (DiD) method estimates the causal effect of a policy by comparing the change in outcomes over time between a treatment group and a control group.
-
-**Basic DiD Formula:**
-
-$$
-\\text{{DiD}} = (\\bar{{Y}}_{{\\text{{treatment, post}}}} - \\bar{{Y}}_{{\\text{{treatment, pre}}}}) - (\\bar{{Y}}_{{\\text{{control, post}}}} - \\bar{{Y}}_{{\\text{{control, pre}}}})
-$$
-
-Where:
-- $\\bar{{Y}}_{{\\text{{treatment, post}}}}$ = Average outcome for treatment group after policy
-- $\\bar{{Y}}_{{\\text{{treatment, pre}}}}$ = Average outcome for treatment group before policy
-- $\\bar{{Y}}_{{\\text{{control, post}}}}$ = Average outcome for control group after policy
-- $\\bar{{Y}}_{{\\text{{control, pre}}}}$ = Average outcome for control group before policy
-
-**Key Assumption:** Parallel trends - without the policy, treatment and control groups would have followed similar trends.
-
-#### 3.2 DiD Implementation in This Analysis
-
-**Analysis 1: Peak vs Off-Peak Hours**
-
-- **Treatment Group:** Peak hours (7-10 AM, 4-7 PM) - more affected by congestion pricing
-- **Control Group:** Off-peak hours - less affected by congestion pricing
-- **Outcome Variable:** Average speed (mph)
-
-Formula:
-
-$$
-\\text{{DiD}}_{{\\text{{peak}}}} = (\\text{{Speed}}_{{\\text{{peak, post}}}} - \\text{{Speed}}_{{\\text{{peak, pre}}}}) - (\\text{{Speed}}_{{\\text{{offpeak, post}}}} - \\text{{Speed}}_{{\\text{{offpeak, pre}}}})
-$$
-
-**Result:** DiD = {:.4f} mph
-
-**Analysis 2: CBD Exposure**
-
-- **Treatment Group:** High CBD exposure hours (above median CBD interaction)
-- **Control Group:** Low CBD exposure hours (below median CBD interaction)
-- **Outcome Variable:** Average speed (mph)
-
-Formula:
-
-$$
-\\text{{DiD}}_{{\\text{{CBD}}}} = (\\text{{Speed}}_{{\\text{{high CBD, post}}}} - \\text{{Speed}}_{{\\text{{high CBD, pre}}}}) - (\\text{{Speed}}_{{\\text{{low CBD, post}}}} - \\text{{Speed}}_{{\\text{{low CBD, pre}}}})
-$$
-
-**Result:** DiD = {:.4f} mph
-
-#### 3.3 Discussion: Equal Sample Size Requirement
-
-**Professor's Concern:** "DiD requires equal number of observations in pre- and post-policy periods."
-
-**Evaluation:**
-
-1. **Theoretical Requirement:** DiD does NOT strictly require equal sample sizes. The method is valid as long as:
-   - The parallel trends assumption holds
-   - Both periods have sufficient observations for reliable estimation
-   - Standard errors are properly calculated
-
-2. **Our Data:**
-   - Pre-policy: {:,} hours
-   - Post-policy: {:,} hours
-   - Ratio: {:.2f}:1
-
-3. **Implications:**
-   - **Unequal sample sizes are acceptable** in DiD analysis
-   - Larger pre-policy sample provides better baseline estimation
-   - Standard t-tests and regression-based DiD handle unequal samples naturally
-   - **Concern:** If sample sizes are very imbalanced, statistical power may be reduced
-   - **Mitigation:** We have substantial observations in both periods (5,000+ hours each)
-
-4. **Best Practices:**
-   - Use regression-based DiD for formal inference: $Y_{{it}} = \\beta_0 + \\beta_1 \\text{{Post}}_t + \\beta_2 \\text{{Treatment}}_i + \\beta_3 (\\text{{Post}}_t \\times \\text{{Treatment}}_i) + \\epsilon_{{it}}$
-   - Where $\\beta_3$ is the DiD estimate
-   - This approach properly accounts for unequal sample sizes and provides standard errors
-   - Consider time-varying confounders and seasonality
-
-**Conclusion:** The equal sample size "requirement" is a misconception. Our analysis is methodologically sound with unequal sample sizes.
-
-## Results
-
-### Pre/Post Comparison
-{}
-
-### Peak vs Off-Peak Analysis
-{}
-
-### Day Type Analysis (Weekday/Weekend/Holiday)
-{}
-
-**Statistical Tests by Day Type:**
-
-**Weekday Analysis:**
-- Average Speed: t-statistic: {:.4f}, p-value: {:.4f}
-- CBD Inside Ratio: t-statistic: {:.4f}, p-value: {:.4f}
-- Total Trips: t-statistic: {:.4f}, p-value: {:.4f}
-
-**Weekend Analysis:**
-- Average Speed: t-statistic: {:.4f}, p-value: {:.4f}
-- CBD Inside Ratio: t-statistic: {:.4f}, p-value: {:.4f}
-- Total Trips: t-statistic: {:.4f}, p-value: {:.4f}
-
-**Holiday Analysis:**
-- Average Speed: t-statistic: {:.4f}, p-value: {:.4f}
-- CBD Inside Ratio: t-statistic: {:.4f}, p-value: {:.4f}
-- Total Trips: t-statistic: {:.4f}, p-value: {:.4f}
-
-## Policy Impact Assessment
-
-### Speed Effects
-The analysis shows {} changes in average speeds following the CBD congestion pricing implementation. The overall speed change was {:.2f}%.
-
-### CBD Usage Patterns
-CBD internal trip ratios show a {} of {:.2f}%, which is {}.
-
-### Trip Volume Effects
-Overall taxi trip volumes {} by {:.2f}%, suggesting {}.
-
-### Substitution Effect Analysis (CBD Neighbor Areas)
-
-To detect whether passengers are avoiding the congestion charge by using neighboring areas instead of CBD:
-
-**CBD Neighbor In Ratio (trips entering CBD neighbor areas):**
-- Change: {:+.2f}%
-- Statistical significance: {} (p = {:.4f})
-
-**CBD Neighbor Out Ratio (trips leaving CBD neighbor areas):**
-- Change: {:+.2f}%
-- Statistical significance: {} (p = {:.4f})
-
-**Interpretation:**
-{}
+## Day Type Distribution
+- **Weekday:** {(df['day_type'] == 'Weekday').sum():,} hours
+- **Weekend:** {(df['day_type'] == 'Weekend').sum():,} hours  
+- **Holiday:** {(df['day_type'] == 'Holiday').sum():,} hours
 
 ## Difference-in-Differences Results
 
-1. **Peak Hours Effect:** {:.4f} mph differential impact during peak hours
-2. **CBD Exposure Effect:** {:.4f} mph differential impact for high CBD exposure areas
-3. **Weekday vs Weekend Effect:** {:.4f} mph differential impact for weekdays vs weekends
-4. **CBD Usage Weekday Effect:** {:.4f} differential impact for CBD usage on weekdays vs weekends
-5. **Weekday vs Holiday Effect:** {} mph differential impact (if sufficient holiday data)
+1. **Peak Hours Effect:** {exec_summary['did_peak_estimate']:.4f} mph differential impact during peak hours
+2. **CBD Exposure Effect:** {exec_summary['did_cbd_estimate']:.4f} mph differential impact for high CBD exposure areas
+3. **Weekday vs Weekend Effect:** {exec_summary['did_weekday_weekend_estimate']:.4f} mph differential impact for weekdays vs weekends
+4. **CBD Usage Weekday Effect:** {exec_summary['did_cbd_daytype_estimate']:.4f} differential impact for CBD usage on weekdays vs weekends
+{f"5. **Weekday vs Holiday Effect:** {exec_summary['did_weekday_holiday_estimate']:.4f} mph differential impact" if exec_summary['did_weekday_holiday_estimate'] is not None else "5. **Weekday vs Holiday Effect:** N/A (insufficient holiday data)"}
 
 ## Conclusions
 
-Based on the comprehensive analysis of NYC Yellow & Green Taxi hourly data:
+Based on the comprehensive analysis of NYC Yellow & Green Taxi hourly data with day type analysis:
 
-1. **Speed Effects:** {} following policy implementation
-2. **Usage Patterns:** {} as intended by the policy
-3. **Substitution Effect:** {}
-4. **Overall Impact:** The policy shows {} in the initial implementation period
+1. **Speed Effects:** {'Evidence of speed improvements' if exec_summary['speed_change_pct'] > 0 else 'No evidence of speed improvements'} following policy implementation
+2. **Usage Patterns:** {'Evidence of reduced CBD usage' if exec_summary['cbd_inside_change_pct'] < 0 else 'No evidence of reduced CBD usage'} as intended by the policy
+3. **Substitution Effect:** {'Evidence suggests passengers are avoiding CBD by using neighboring areas' if has_substitution else 'No strong evidence of substitution to neighboring areas'}
+4. **Day Type Differences:** Weekdays show {'stronger' if abs(exec_summary['did_weekday_weekend_estimate']) > 0.05 else 'similar'} policy impacts compared to weekends
+5. **Overall Impact:** The policy shows {'clear impacts' if abs(exec_summary['speed_change_pct']) > 1 else 'mixed results'} in the initial implementation period
 
 ## Limitations
 
 1. **Simplified Analysis:** This analysis uses basic statistical methods and may not capture complex causal relationships
 2. **Confounding Factors:** Weather, holidays, and other concurrent changes not controlled for
 3. **Short-term Data:** Limited post-policy observation period (approximately 8 months)
-4. **Data Scope:** Only Yellow & Green Taxi data, excluding other transportation modes (Uber, Lyft, public transit, private vehicles)
+4. **Data Scope:** Only Yellow & Green Taxi data, excluding other transportation modes
 5. **Parallel Trends Assumption:** DiD assumes parallel trends, which we have not formally tested
 6. **Seasonality:** Monthly and seasonal patterns may confound the policy effect
 
 ---
 
-**Analysis conducted by:** Yanjie Chen
+**Analysis conducted by:** Yanjie Chen  
 **Files generated:** Tables in `tables/`, Figures in `figures/`
-""".format(
-    datetime.now().strftime('%Y-%m-%d'),
-    exec_summary['speed_change_pct'], speed_sig, exec_summary['speed_pvalue'], exec_summary['did_peak_estimate'],
-    exec_summary['trips_change_pct'], trips_sig, exec_summary['trips_pvalue'],
-    exec_summary['cbd_inside_change_pct'], cbd_sig, exec_summary['cbd_pvalue'], exec_summary['did_cbd_estimate'],
-    exec_summary['cbd_neighbor_in_change_pct'], neighbor_in_sig, exec_summary['neighbor_in_pvalue'],
-    exec_summary['cbd_neighbor_out_change_pct'], neighbor_out_sig, exec_summary['neighbor_out_pvalue'],
-    substitution_interp,
-    exec_summary['did_weekday_weekend_estimate'], exec_summary['did_cbd_daytype_estimate'],
-    'Sufficient' if weekday_holiday_did is not None else 'Insufficient',
-    df[df['day_type'] == 'Holiday'].shape[0] if df[df['day_type'] == 'Holiday'].shape[0] > 0 else 0,
-    time_min, time_max,
-    total_hours, pre_hours, post_hours,
-    yellow_prop, green_prop,
-    exec_summary['did_peak_estimate'], exec_summary['did_cbd_estimate'],
-    pre_hours, post_hours, hours_ratio,
-    comparison_table.to_string(), peak_comparison_df.to_string(), day_type_comparison_df.to_string(),
-    speed_effect_text, exec_summary['speed_change_pct'],
-    cbd_change_dir, abs(exec_summary['cbd_inside_change_pct']), cbd_stat_sig,
-    trips_change_dir, abs(exec_summary['trips_change_pct']), trips_suggest,
-    exec_summary['cbd_neighbor_in_change_pct'], neighbor_in_sig, exec_summary['neighbor_in_pvalue'],
-    exec_summary['cbd_neighbor_out_change_pct'], neighbor_out_sig, exec_summary['neighbor_out_pvalue'],
-    substitution_detailed,
-    exec_summary['did_peak_estimate'], exec_summary['did_cbd_estimate'],
-    exec_summary['did_weekday_weekend_estimate'], exec_summary['did_cbd_daytype_estimate'],
-    f"{exec_summary['did_weekday_holiday_estimate']:.4f}" if exec_summary['did_weekday_holiday_estimate'] is not None else "N/A (insufficient data)",
-    # Day type statistical tests
-    exec_summary.get('Weekday_speed_t_stat', 0), exec_summary.get('Weekday_speed_p_val', 1),
-    exec_summary.get('Weekday_cbd_t_stat', 0), exec_summary.get('Weekday_cbd_p_val', 1),
-    exec_summary.get('Weekday_trips_t_stat', 0), exec_summary.get('Weekday_trips_p_val', 1),
-    exec_summary.get('Weekend_speed_t_stat', 0), exec_summary.get('Weekend_speed_p_val', 1),
-    exec_summary.get('Weekend_cbd_t_stat', 0), exec_summary.get('Weekend_cbd_p_val', 1),
-    exec_summary.get('Weekend_trips_t_stat', 0), exec_summary.get('Weekend_trips_p_val', 1),
-    exec_summary.get('Holiday_speed_t_stat', 0), exec_summary.get('Holiday_speed_p_val', 1),
-    exec_summary.get('Holiday_cbd_t_stat', 0), exec_summary.get('Holiday_cbd_p_val', 1),
-    exec_summary.get('Holiday_trips_t_stat', 0), exec_summary.get('Holiday_trips_p_val', 1),
-    speed_conclusion, usage_conclusion, substitution_conclusion, impact_conclusion
-)
+"""
+
 
 # Save report
 with open('reports/cbd_taxi_simplified_analysis.md', 'w', encoding='utf-8') as f:
