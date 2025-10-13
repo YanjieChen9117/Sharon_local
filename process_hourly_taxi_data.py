@@ -22,7 +22,7 @@ import pandas as pd
 import numpy as np
 import os
 import glob
-from datetime import datetime
+from datetime import datetime, date
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -38,6 +38,35 @@ CBD_ZONES = {
 CBD_NEIGHBORHOODS = {
     140, 141, 142, 143, 237
 }
+
+# 定义2024-2025年美国主要假期
+HOLIDAYS_2024_2025 = [
+    # 2024年假期
+    date(2024, 1, 1),   # New Year's Day
+    date(2024, 1, 15),  # Martin Luther King Jr. Day
+    date(2024, 2, 19),  # Presidents' Day
+    date(2024, 5, 27),  # Memorial Day
+    date(2024, 6, 19),  # Juneteenth
+    date(2024, 7, 4),   # Independence Day
+    date(2024, 9, 2),   # Labor Day
+    date(2024, 10, 14), # Columbus Day
+    date(2024, 11, 11), # Veterans Day
+    date(2024, 11, 28), # Thanksgiving Day
+    date(2024, 12, 25), # Christmas Day
+    
+    # 2025年假期
+    date(2025, 1, 1),   # New Year's Day
+    date(2025, 1, 20),  # Martin Luther King Jr. Day
+    date(2025, 2, 17),  # Presidents' Day
+    date(2025, 5, 26),  # Memorial Day
+    date(2025, 6, 19),  # Juneteenth
+    date(2025, 7, 4),   # Independence Day
+    date(2025, 9, 1),   # Labor Day
+    date(2025, 10, 13), # Columbus Day
+    date(2025, 11, 11), # Veterans Day
+    date(2025, 11, 27), # Thanksgiving Day
+    date(2025, 12, 25), # Christmas Day
+]
 
 
 class HourlyTaxiDataProcessor:
@@ -247,6 +276,56 @@ class HourlyTaxiDataProcessor:
         # 提取小时信息 - 使用标准化后的字段名
         df['pickup_hour'] = df['pickup_datetime'].dt.floor('H')  # 向下取整到小时
         
+        # 添加时段类型标识
+        df = self.add_time_period_labels(df)
+        
+        return df
+    
+    def add_time_period_labels(self, df):
+        """
+        为每个行程添加时段类型标识（工作日、周末、假期）
+        
+        参数:
+            df: 数据框
+            
+        返回:
+            DataFrame: 添加了时段类型标识的数据框
+        """
+        # 提取日期信息
+        df['pickup_date'] = df['pickup_datetime'].dt.date
+        df['pickup_dow'] = df['pickup_datetime'].dt.dayofweek  # 0=Monday, 6=Sunday
+        df['pickup_hour_num'] = df['pickup_datetime'].dt.hour
+        
+        # 判断是否为周末
+        df['is_weekend'] = df['pickup_dow'].isin([5, 6])  # 周六和周日
+        
+        # 判断是否为假期
+        df['is_holiday'] = df['pickup_date'].isin(HOLIDAYS_2024_2025)
+        
+        # 判断是否为高峰时段
+        df['is_peak'] = df['pickup_hour_num'].isin([7, 8, 9, 10, 16, 17, 18, 19])
+        
+        # 创建时段类型分类：工作日、周末、假期
+        def get_day_type(row):
+            if row['is_holiday']:
+                return 'Holiday'
+            elif row['is_weekend']:
+                return 'Weekend'
+            else:
+                return 'Weekday'
+        
+        df['day_type'] = df.apply(get_day_type, axis=1)
+        
+        # 打印时段类型统计
+        day_type_counts = df['day_type'].value_counts()
+        print(f"  时段类型分布: Weekday={day_type_counts.get('Weekday', 0):,}, "
+              f"Weekend={day_type_counts.get('Weekend', 0):,}, "
+              f"Holiday={day_type_counts.get('Holiday', 0):,}")
+        
+        peak_counts = df['is_peak'].value_counts()
+        print(f"  高峰时段分布: Peak={peak_counts.get(True, 0):,}, "
+              f"Off-peak={peak_counts.get(False, 0):,}")
+        
         return df
     
     def remove_unnecessary_columns(self, df):
@@ -334,6 +413,22 @@ class HourlyTaxiDataProcessor:
             ),
             'green_ratio': hourly_groups.apply(
                 lambda x: (x['taxi_type'] == 'green').sum() / len(x) if 'taxi_type' in x.columns else 0.0
+            ),
+            
+            # 时段类型分布
+            'weekday_ratio': hourly_groups.apply(
+                lambda x: (x['day_type'] == 'Weekday').sum() / len(x) if 'day_type' in x.columns else 1.0
+            ),
+            'weekend_ratio': hourly_groups.apply(
+                lambda x: (x['day_type'] == 'Weekend').sum() / len(x) if 'day_type' in x.columns else 0.0
+            ),
+            'holiday_ratio': hourly_groups.apply(
+                lambda x: (x['day_type'] == 'Holiday').sum() / len(x) if 'day_type' in x.columns else 0.0
+            ),
+            
+            # 高峰时段比例
+            'peak_ratio': hourly_groups.apply(
+                lambda x: x['is_peak'].sum() / len(x) if 'is_peak' in x.columns else 0.0
             ),
         })
         
@@ -520,6 +615,20 @@ class HourlyTaxiDataProcessor:
         print(f"\n出租车类型分布:")
         print(f"  Yellow Taxi平均比例: {all_hourly_data['yellow_ratio'].mean():.2%}")
         print(f"  Green Taxi平均比例: {all_hourly_data['green_ratio'].mean():.2%}")
+        
+        print(f"\n时段类型分布:")
+        print(f"  工作日 (Weekday) 平均比例: {all_hourly_data['weekday_ratio'].mean():.2%}")
+        print(f"  周末 (Weekend) 平均比例: {all_hourly_data['weekend_ratio'].mean():.2%}")
+        print(f"  假期 (Holiday) 平均比例: {all_hourly_data['holiday_ratio'].mean():.2%}")
+        print(f"  高峰时段平均比例: {all_hourly_data['peak_ratio'].mean():.2%}")
+        
+        print(f"\n时段类型统计:")
+        weekday_hours = (all_hourly_data['weekday_ratio'] == 1.0).sum()
+        weekend_hours = (all_hourly_data['weekend_ratio'] == 1.0).sum()
+        holiday_hours = (all_hourly_data['holiday_ratio'] == 1.0).sum()
+        print(f"  纯工作日小时数: {weekday_hours:,}")
+        print(f"  纯周末小时数: {weekend_hours:,}")
+        print(f"  纯假期小时数: {holiday_hours:,}")
         print("="*80)
         
         return all_hourly_data

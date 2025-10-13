@@ -14,7 +14,7 @@ import matplotlib
 matplotlib.use('Agg')  # 使用非交互式后端，不显示窗口
 import matplotlib.pyplot as plt
 import warnings
-from datetime import datetime
+from datetime import datetime, date
 from pathlib import Path
 from scipy import stats
 
@@ -117,6 +117,55 @@ df['is_weekend'] = df['pickup_hour'].dt.dayofweek.isin([5, 6])
 df['month'] = df['pickup_hour'].dt.month
 df['date'] = df['pickup_hour'].dt.date
 
+# 定义2024-2025年美国主要假期
+holidays_2024_2025 = [
+    # 2024年假期
+    date(2024, 1, 1),   # New Year's Day
+    date(2024, 1, 15),  # Martin Luther King Jr. Day
+    date(2024, 2, 19),  # Presidents' Day
+    date(2024, 5, 27),  # Memorial Day
+    date(2024, 6, 19),  # Juneteenth
+    date(2024, 7, 4),   # Independence Day
+    date(2024, 9, 2),   # Labor Day
+    date(2024, 10, 14), # Columbus Day
+    date(2024, 11, 11), # Veterans Day
+    date(2024, 11, 28), # Thanksgiving Day
+    date(2024, 12, 25), # Christmas Day
+    
+    # 2025年假期
+    date(2025, 1, 1),   # New Year's Day
+    date(2025, 1, 20),  # Martin Luther King Jr. Day
+    date(2025, 2, 17),  # Presidents' Day
+    date(2025, 5, 26),  # Memorial Day
+    date(2025, 6, 19),  # Juneteenth
+    date(2025, 7, 4),   # Independence Day
+    date(2025, 9, 1),   # Labor Day
+    date(2025, 10, 13), # Columbus Day
+    date(2025, 11, 11), # Veterans Day
+    date(2025, 11, 27), # Thanksgiving Day
+    date(2025, 12, 25), # Christmas Day
+]
+
+# 创建假期标识
+df['is_holiday'] = df['date'].isin(holidays_2024_2025)
+
+# 创建时段分类：工作日、周末、假期
+def get_day_type(row):
+    if row['is_holiday']:
+        return 'Holiday'
+    elif row['is_weekend']:
+        return 'Weekend'
+    else:
+        return 'Weekday'
+
+df['day_type'] = df.apply(get_day_type, axis=1)
+
+print("📅 Day type distribution:")
+print(df['day_type'].value_counts())
+print(f"Holiday days: {df['is_holiday'].sum()} hours")
+print(f"Weekend days: {df['is_weekend'].sum()} hours")
+print(f"Weekday days: {(~df['is_weekend'] & ~df['is_holiday']).sum()} hours")
+
 print("Pre-policy data: {:,} hours".format((~df['post']).sum()))
 print("Post-policy data: {:,} hours".format(df['post'].sum()))
 
@@ -171,6 +220,45 @@ print("\nPeak hours comparison:")
 print(peak_comparison_df.round(4))
 peak_comparison_df.to_csv('tables/peak_comparison.csv', index=False)
 
+# Day type comparison (工作日、周末、假期)
+print("\n📅 Day Type Analysis (Weekday/Weekend/Holiday)")
+print("-" * 50)
+
+day_type_comparison = []
+for day_type in ['Weekday', 'Weekend', 'Holiday']:
+    day_data = df[df['day_type'] == day_type]
+    
+    if len(day_data) > 0:  # 确保有数据
+        pre_day = day_data[~day_data['post']][key_metrics].mean()
+        post_day = day_data[day_data['post']][key_metrics].mean()
+        change_day = ((post_day / pre_day - 1) * 100).round(2)
+        
+        day_type_comparison.append({
+            'Day_Type': day_type,
+            'Pre_avg_speed': pre_day['avg_speed'],
+            'Post_avg_speed': post_day['avg_speed'],
+            'avg_speed_change_%': change_day['avg_speed'],
+            'Pre_total_trips': pre_day['total_trips'],
+            'Post_total_trips': post_day['total_trips'],
+            'total_trips_change_%': change_day['total_trips'],
+            'Pre_cbd_inside_ratio': pre_day['cbd_inside_ratio'],
+            'Post_cbd_inside_ratio': post_day['cbd_inside_ratio'],
+            'cbd_inside_ratio_change_%': change_day['cbd_inside_ratio'],
+            'Pre_cbd_neighbor_in_ratio': pre_day['cbd_neighbor_in_ratio'],
+            'Post_cbd_neighbor_in_ratio': post_day['cbd_neighbor_in_ratio'],
+            'cbd_neighbor_in_ratio_change_%': change_day['cbd_neighbor_in_ratio'],
+            'Pre_cbd_neighbor_out_ratio': pre_day['cbd_neighbor_out_ratio'],
+            'Post_cbd_neighbor_out_ratio': post_day['cbd_neighbor_out_ratio'],
+            'cbd_neighbor_out_ratio_change_%': change_day['cbd_neighbor_out_ratio'],
+            'Sample_Size_Pre': (~day_data['post']).sum(),
+            'Sample_Size_Post': day_data['post'].sum()
+        })
+
+day_type_comparison_df = pd.DataFrame(day_type_comparison)
+print("\nDay type comparison:")
+print(day_type_comparison_df.round(4))
+day_type_comparison_df.to_csv('tables/day_type_comparison.csv', index=False)
+
 # Simple t-tests for statistical significance
 print("\n📈 Statistical Tests:")
 
@@ -203,6 +291,58 @@ pre_neighbor_out = df[~df['post']]['cbd_neighbor_out_ratio']
 post_neighbor_out = df[df['post']]['cbd_neighbor_out_ratio']
 t_stat_neighbor_out, p_val_neighbor_out = stats.ttest_ind(pre_neighbor_out, post_neighbor_out)
 print("CBD Neighbor Out Ratio - t-statistic: {:.4f}, p-value: {:.4f}".format(t_stat_neighbor_out, p_val_neighbor_out))
+
+# Statistical tests by day type
+print("\n📈 Statistical Tests by Day Type:")
+print("-" * 40)
+
+day_type_tests = {}
+for day_type in ['Weekday', 'Weekend', 'Holiday']:
+    day_data = df[df['day_type'] == day_type]
+    
+    if len(day_data) > 50:  # 确保有足够的数据进行统计检验
+        print(f"\n{day_type} Analysis (n={len(day_data)} hours):")
+        
+        # Speed test
+        pre_speed = day_data[~day_data['post']]['avg_speed']
+        post_speed = day_data[day_data['post']]['avg_speed']
+        if len(pre_speed) > 1 and len(post_speed) > 1:
+            t_stat_speed, p_val_speed = stats.ttest_ind(pre_speed, post_speed)
+            print("  Average Speed - t-statistic: {:.4f}, p-value: {:.4f}".format(t_stat_speed, p_val_speed))
+            day_type_tests[f'{day_type}_speed'] = {'t_stat': t_stat_speed, 'p_val': p_val_speed}
+        
+        # CBD inside ratio test
+        pre_cbd = day_data[~day_data['post']]['cbd_inside_ratio']
+        post_cbd = day_data[day_data['post']]['cbd_inside_ratio']
+        if len(pre_cbd) > 1 and len(post_cbd) > 1:
+            t_stat_cbd, p_val_cbd = stats.ttest_ind(pre_cbd, post_cbd)
+            print("  CBD Inside Ratio - t-statistic: {:.4f}, p-value: {:.4f}".format(t_stat_cbd, p_val_cbd))
+            day_type_tests[f'{day_type}_cbd'] = {'t_stat': t_stat_cbd, 'p_val': p_val_cbd}
+        
+        # Total trips test
+        pre_trips = day_data[~day_data['post']]['total_trips']
+        post_trips = day_data[day_data['post']]['total_trips']
+        if len(pre_trips) > 1 and len(post_trips) > 1:
+            t_stat_trips, p_val_trips = stats.ttest_ind(pre_trips, post_trips)
+            print("  Total Trips - t-statistic: {:.4f}, p-value: {:.4f}".format(t_stat_trips, p_val_trips))
+            day_type_tests[f'{day_type}_trips'] = {'t_stat': t_stat_trips, 'p_val': p_val_trips}
+        
+        # CBD neighbor substitution tests
+        pre_neighbor_in = day_data[~day_data['post']]['cbd_neighbor_in_ratio']
+        post_neighbor_in = day_data[day_data['post']]['cbd_neighbor_in_ratio']
+        if len(pre_neighbor_in) > 1 and len(post_neighbor_in) > 1:
+            t_stat_neighbor_in, p_val_neighbor_in = stats.ttest_ind(pre_neighbor_in, post_neighbor_in)
+            print("  CBD Neighbor In - t-statistic: {:.4f}, p-value: {:.4f}".format(t_stat_neighbor_in, p_val_neighbor_in))
+            day_type_tests[f'{day_type}_neighbor_in'] = {'t_stat': t_stat_neighbor_in, 'p_val': p_val_neighbor_in}
+        
+        pre_neighbor_out = day_data[~day_data['post']]['cbd_neighbor_out_ratio']
+        post_neighbor_out = day_data[day_data['post']]['cbd_neighbor_out_ratio']
+        if len(pre_neighbor_out) > 1 and len(post_neighbor_out) > 1:
+            t_stat_neighbor_out, p_val_neighbor_out = stats.ttest_ind(pre_neighbor_out, post_neighbor_out)
+            print("  CBD Neighbor Out - t-statistic: {:.4f}, p-value: {:.4f}".format(t_stat_neighbor_out, p_val_neighbor_out))
+            day_type_tests[f'{day_type}_neighbor_out'] = {'t_stat': t_stat_neighbor_out, 'p_val': p_val_neighbor_out}
+    else:
+        print(f"\n{day_type}: Insufficient data for statistical testing (n={len(day_data)})")
 
 # ============================================================================
 # 3. Simple Difference-in-Differences
@@ -251,6 +391,58 @@ print("High CBD exposure - Pre: {:.3f}, Post: {:.3f}, Change: {:.3f}".format(hig
 print("Low CBD exposure - Pre: {:.3f}, Post: {:.3f}, Change: {:.3f}".format(low_cbd_pre, low_cbd_post, low_cbd_change))
 print("DiD Estimate (CBD exposure effect): {:.3f} mph".format(cbd_did_estimate))
 
+# Day type DiD analysis
+print("\nDay Type Difference-in-Differences Analysis:")
+print("-" * 50)
+
+# Weekday vs Weekend DiD for avg_speed
+print("Weekday vs Weekend DiD for Average Speed:")
+
+weekday_pre = df[(df['day_type'] == 'Weekday') & (df['post'] == False)]['avg_speed'].mean()
+weekday_post = df[(df['day_type'] == 'Weekday') & (df['post'] == True)]['avg_speed'].mean()
+weekend_pre = df[(df['day_type'] == 'Weekend') & (df['post'] == False)]['avg_speed'].mean()
+weekend_post = df[(df['day_type'] == 'Weekend') & (df['post'] == True)]['avg_speed'].mean()
+
+weekday_change = weekday_post - weekday_pre
+weekend_change = weekend_post - weekend_pre
+weekday_weekend_did = weekday_change - weekend_change
+
+print("Weekday - Pre: {:.3f}, Post: {:.3f}, Change: {:.3f}".format(weekday_pre, weekday_post, weekday_change))
+print("Weekend - Pre: {:.3f}, Post: {:.3f}, Change: {:.3f}".format(weekend_pre, weekend_post, weekend_change))
+print("DiD Estimate (Weekday effect): {:.3f} mph".format(weekday_weekend_did))
+
+# Weekday vs Holiday DiD for avg_speed (if sufficient holiday data)
+if df[df['day_type'] == 'Holiday'].shape[0] > 100:
+    print("\nWeekday vs Holiday DiD for Average Speed:")
+    
+    holiday_pre = df[(df['day_type'] == 'Holiday') & (df['post'] == False)]['avg_speed'].mean()
+    holiday_post = df[(df['day_type'] == 'Holiday') & (df['post'] == True)]['avg_speed'].mean()
+    
+    holiday_change = holiday_post - holiday_pre
+    weekday_holiday_did = weekday_change - holiday_change
+    
+    print("Holiday - Pre: {:.3f}, Post: {:.3f}, Change: {:.3f}".format(holiday_pre, holiday_post, holiday_change))
+    print("DiD Estimate (Weekday vs Holiday effect): {:.3f} mph".format(weekday_holiday_did))
+else:
+    print("\nInsufficient holiday data for DiD analysis")
+    weekday_holiday_did = None
+
+# CBD usage DiD by day type
+print("\nCBD Inside Ratio DiD by Day Type:")
+
+weekday_cbd_pre = df[(df['day_type'] == 'Weekday') & (df['post'] == False)]['cbd_inside_ratio'].mean()
+weekday_cbd_post = df[(df['day_type'] == 'Weekday') & (df['post'] == True)]['cbd_inside_ratio'].mean()
+weekend_cbd_pre = df[(df['day_type'] == 'Weekend') & (df['post'] == False)]['cbd_inside_ratio'].mean()
+weekend_cbd_post = df[(df['day_type'] == 'Weekend') & (df['post'] == True)]['cbd_inside_ratio'].mean()
+
+weekday_cbd_change = weekday_cbd_post - weekday_cbd_pre
+weekend_cbd_change = weekend_cbd_post - weekend_cbd_pre
+cbd_daytype_did = weekday_cbd_change - weekend_cbd_change
+
+print("Weekday CBD - Pre: {:.4f}, Post: {:.4f}, Change: {:.4f}".format(weekday_cbd_pre, weekday_cbd_post, weekday_cbd_change))
+print("Weekend CBD - Pre: {:.4f}, Post: {:.4f}, Change: {:.4f}".format(weekend_cbd_pre, weekend_cbd_post, weekend_cbd_change))
+print("DiD Estimate (CBD usage weekday effect): {:.4f}".format(cbd_daytype_did))
+
 # ============================================================================
 # 4. Visualizations
 # ============================================================================
@@ -272,7 +464,10 @@ daily_df = df.groupby('date').agg({
     'cbd_neighbor_in_ratio': 'mean',
     'cbd_neighbor_out_ratio': 'mean',
     'cbd_neighbor_non_ratio': 'mean',
-    'pickup_hour': 'first'  # Keep one datetime for plotting
+    'pickup_hour': 'first',  # Keep one datetime for plotting
+    'day_type': 'first',     # Keep day type for coloring
+    'is_holiday': 'first',   # Keep holiday flag
+    'is_weekend': 'first'    # Keep weekend flag
 }).reset_index()
 
 # Convert date back to datetime for plotting
@@ -573,6 +768,178 @@ plt.tight_layout()
 plt.savefig('figures/distribution_comparison.png', dpi=300, bbox_inches='tight')
 plt.close()
 
+# Day type specific visualizations
+print("Creating day type specific visualizations...")
+
+# Plot 1: Average Speed by Day Type with colored points
+fig, axes = plt.subplots(1, 2, figsize=(20, 8))
+
+# Speed by day type (colored by day type)
+colors = {'Weekday': 'blue', 'Weekend': 'green', 'Holiday': 'red'}
+for day_type in ['Weekday', 'Weekend', 'Holiday']:
+    day_data = daily_df[daily_df['day_type'] == day_type]
+    if len(day_data) > 0:
+        axes[0].scatter(day_data['date_dt'], day_data['avg_speed'], 
+                       c=colors[day_type], alpha=0.6, label=day_type, s=30)
+
+axes[0].axvline(policy_date, color='black', linestyle='--', linewidth=3, label='Policy Implementation')
+axes[0].set_title('Daily Average Speed by Day Type', fontsize=14, fontweight='bold')
+axes[0].set_ylabel('Speed (mph)')
+axes[0].legend()
+axes[0].grid(True, alpha=0.3)
+axes[0].tick_params(axis='x', rotation=45)
+
+# CBD Inside Ratio by day type
+for day_type in ['Weekday', 'Weekend', 'Holiday']:
+    day_data = daily_df[daily_df['day_type'] == day_type]
+    if len(day_data) > 0:
+        axes[1].scatter(day_data['date_dt'], day_data['cbd_inside_ratio'], 
+                       c=colors[day_type], alpha=0.6, label=day_type, s=30)
+
+axes[1].axvline(policy_date, color='black', linestyle='--', linewidth=3, label='Policy Implementation')
+axes[1].set_title('Daily CBD Inside Ratio by Day Type', fontsize=14, fontweight='bold')
+axes[1].set_ylabel('CBD Inside Ratio')
+axes[1].legend()
+axes[1].grid(True, alpha=0.3)
+axes[1].tick_params(axis='x', rotation=45)
+
+plt.tight_layout()
+plt.savefig('figures/day_type_scatter.png', dpi=300, bbox_inches='tight')
+plt.close()
+
+# Plot 2: Box plots by day type and policy period
+fig, axes = plt.subplots(1, 3, figsize=(21, 7))
+
+# Speed box plots
+speed_data_by_type = []
+labels_by_type = []
+for day_type in ['Weekday', 'Weekend', 'Holiday']:
+    for period in [False, True]:
+        period_label = 'Post-policy' if period else 'Pre-policy'
+        data = df[(df['day_type'] == day_type) & (df['post'] == period)]['avg_speed']
+        if len(data) > 0:
+            speed_data_by_type.append(data)
+            labels_by_type.append(f'{day_type}\n{period_label}')
+
+if speed_data_by_type:
+    axes[0].boxplot(speed_data_by_type, labels=labels_by_type)
+    axes[0].set_title('Average Speed Distribution by Day Type and Period', fontsize=12, fontweight='bold')
+    axes[0].set_ylabel('Speed (mph)')
+    axes[0].tick_params(axis='x', rotation=45)
+    axes[0].grid(True, alpha=0.3)
+
+# CBD Inside Ratio box plots
+cbd_data_by_type = []
+cbd_labels_by_type = []
+for day_type in ['Weekday', 'Weekend', 'Holiday']:
+    for period in [False, True]:
+        period_label = 'Post-policy' if period else 'Pre-policy'
+        data = df[(df['day_type'] == day_type) & (df['post'] == period)]['cbd_inside_ratio']
+        if len(data) > 0:
+            cbd_data_by_type.append(data)
+            cbd_labels_by_type.append(f'{day_type}\n{period_label}')
+
+if cbd_data_by_type:
+    axes[1].boxplot(cbd_data_by_type, labels=cbd_labels_by_type)
+    axes[1].set_title('CBD Inside Ratio Distribution by Day Type and Period', fontsize=12, fontweight='bold')
+    axes[1].set_ylabel('CBD Inside Ratio')
+    axes[1].tick_params(axis='x', rotation=45)
+    axes[1].grid(True, alpha=0.3)
+
+# Total Trips box plots
+trips_data_by_type = []
+trips_labels_by_type = []
+for day_type in ['Weekday', 'Weekend', 'Holiday']:
+    for period in [False, True]:
+        period_label = 'Post-policy' if period else 'Pre-policy'
+        data = df[(df['day_type'] == day_type) & (df['post'] == period)]['total_trips']
+        if len(data) > 0:
+            trips_data_by_type.append(data)
+            trips_labels_by_type.append(f'{day_type}\n{period_label}')
+
+if trips_data_by_type:
+    axes[2].boxplot(trips_data_by_type, labels=trips_labels_by_type)
+    axes[2].set_title('Total Trips Distribution by Day Type and Period', fontsize=12, fontweight='bold')
+    axes[2].set_ylabel('Total Trips per Hour')
+    axes[2].tick_params(axis='x', rotation=45)
+    axes[2].grid(True, alpha=0.3)
+
+plt.tight_layout()
+plt.savefig('figures/day_type_boxplots.png', dpi=300, bbox_inches='tight')
+plt.close()
+
+# Plot 3: Time series with different colors for different day types
+fig, axes = plt.subplots(2, 2, figsize=(20, 12))
+
+# Average Speed time series by day type
+for day_type in ['Weekday', 'Weekend', 'Holiday']:
+    day_data = daily_df[daily_df['day_type'] == day_type]
+    if len(day_data) > 0:
+        axes[0, 0].plot(day_data['date_dt'], day_data['avg_speed'], 
+                       'o-', linewidth=2, markersize=4, color=colors[day_type], 
+                       alpha=0.8, label=day_type)
+
+axes[0, 0].axvline(policy_date, color='black', linestyle='--', linewidth=3, label='Policy Implementation')
+axes[0, 0].set_title('Daily Average Speed by Day Type', fontsize=14, fontweight='bold')
+axes[0, 0].set_ylabel('Speed (mph)')
+axes[0, 0].legend()
+axes[0, 0].grid(True, alpha=0.3)
+axes[0, 0].tick_params(axis='x', rotation=45)
+
+# CBD Inside Ratio time series by day type
+for day_type in ['Weekday', 'Weekend', 'Holiday']:
+    day_data = daily_df[daily_df['day_type'] == day_type]
+    if len(day_data) > 0:
+        axes[0, 1].plot(day_data['date_dt'], day_data['cbd_inside_ratio'], 
+                       'o-', linewidth=2, markersize=4, color=colors[day_type], 
+                       alpha=0.8, label=day_type)
+
+axes[0, 1].axvline(policy_date, color='black', linestyle='--', linewidth=3, label='Policy Implementation')
+axes[0, 1].set_title('Daily CBD Inside Ratio by Day Type', fontsize=14, fontweight='bold')
+axes[0, 1].set_ylabel('CBD Inside Ratio')
+axes[0, 1].legend()
+axes[0, 1].grid(True, alpha=0.3)
+axes[0, 1].tick_params(axis='x', rotation=45)
+
+# CBD Neighbor In Ratio time series by day type
+for day_type in ['Weekday', 'Weekend', 'Holiday']:
+    day_data = daily_df[daily_df['day_type'] == day_type]
+    if len(day_data) > 0:
+        axes[1, 0].plot(day_data['date_dt'], day_data['cbd_neighbor_in_ratio'], 
+                       'o-', linewidth=2, markersize=4, color=colors[day_type], 
+                       alpha=0.8, label=day_type)
+
+axes[1, 0].axvline(policy_date, color='black', linestyle='--', linewidth=3, label='Policy Implementation')
+axes[1, 0].set_title('Daily CBD Neighbor In Ratio by Day Type', fontsize=14, fontweight='bold')
+axes[1, 0].set_ylabel('CBD Neighbor In Ratio')
+axes[1, 0].legend()
+axes[1, 0].grid(True, alpha=0.3)
+axes[1, 0].tick_params(axis='x', rotation=45)
+
+# CBD Neighbor Out Ratio time series by day type
+for day_type in ['Weekday', 'Weekend', 'Holiday']:
+    day_data = daily_df[daily_df['day_type'] == day_type]
+    if len(day_data) > 0:
+        axes[1, 1].plot(day_data['date_dt'], day_data['cbd_neighbor_out_ratio'], 
+                       'o-', linewidth=2, markersize=4, color=colors[day_type], 
+                       alpha=0.8, label=day_type)
+
+axes[1, 1].axvline(policy_date, color='black', linestyle='--', linewidth=3, label='Policy Implementation')
+axes[1, 1].set_title('Daily CBD Neighbor Out Ratio by Day Type', fontsize=14, fontweight='bold')
+axes[1, 1].set_ylabel('CBD Neighbor Out Ratio')
+axes[1, 1].legend()
+axes[1, 1].grid(True, alpha=0.3)
+axes[1, 1].tick_params(axis='x', rotation=45)
+
+plt.tight_layout()
+plt.savefig('figures/day_type_time_series.png', dpi=300, bbox_inches='tight')
+plt.close()
+
+print("✅ Created day type specific visualizations:")
+print("   - Scatter plots colored by day type")
+print("   - Box plots by day type and policy period")
+print("   - Time series with different colors for each day type")
+
 # ============================================================================
 # 5. Generate Report
 # ============================================================================
@@ -589,12 +956,20 @@ exec_summary = {
     'cbd_neighbor_out_change_pct': pct_change['cbd_neighbor_out_ratio'],
     'did_peak_estimate': did_estimate,
     'did_cbd_estimate': cbd_did_estimate,
+    'did_weekday_weekend_estimate': weekday_weekend_did,
+    'did_weekday_holiday_estimate': weekday_holiday_did if weekday_holiday_did is not None else None,
+    'did_cbd_daytype_estimate': cbd_daytype_did,
     'speed_pvalue': p_val_speed,
     'cbd_pvalue': p_val_cbd,
     'trips_pvalue': p_val_trips,
     'neighbor_in_pvalue': p_val_neighbor_in,
     'neighbor_out_pvalue': p_val_neighbor_out
 }
+
+# Add day type test results to executive summary
+for key, value in day_type_tests.items():
+    exec_summary[f'{key}_t_stat'] = value['t_stat']
+    exec_summary[f'{key}_p_val'] = value['p_val']
 
 # Create markdown report using string concatenation to avoid f-string issues
 # Determine significance and changes
@@ -667,6 +1042,11 @@ report_content = """# NYC CBD Congestion Pricing Policy Impact Analysis - Compre
    - CBD Neighbor Out ratio change: {:.2f}%
    - Statistical significance: {} (p = {:.4f})
    - **Interpretation:** {}
+
+5. **Day Type Analysis (Weekday/Weekend/Holiday):**
+   - Weekday vs Weekend DiD effect: {:.4f} mph
+   - CBD usage weekday vs weekend DiD: {:.4f}
+   - Holiday data availability: {} ({} hours)
 
 ## Data Description
 
@@ -782,6 +1162,26 @@ $$
 ### Peak vs Off-Peak Analysis
 {}
 
+### Day Type Analysis (Weekday/Weekend/Holiday)
+{}
+
+**Statistical Tests by Day Type:**
+
+**Weekday Analysis:**
+- Average Speed: t-statistic: {:.4f}, p-value: {:.4f}
+- CBD Inside Ratio: t-statistic: {:.4f}, p-value: {:.4f}
+- Total Trips: t-statistic: {:.4f}, p-value: {:.4f}
+
+**Weekend Analysis:**
+- Average Speed: t-statistic: {:.4f}, p-value: {:.4f}
+- CBD Inside Ratio: t-statistic: {:.4f}, p-value: {:.4f}
+- Total Trips: t-statistic: {:.4f}, p-value: {:.4f}
+
+**Holiday Analysis:**
+- Average Speed: t-statistic: {:.4f}, p-value: {:.4f}
+- CBD Inside Ratio: t-statistic: {:.4f}, p-value: {:.4f}
+- Total Trips: t-statistic: {:.4f}, p-value: {:.4f}
+
 ## Policy Impact Assessment
 
 ### Speed Effects
@@ -812,6 +1212,9 @@ To detect whether passengers are avoiding the congestion charge by using neighbo
 
 1. **Peak Hours Effect:** {:.4f} mph differential impact during peak hours
 2. **CBD Exposure Effect:** {:.4f} mph differential impact for high CBD exposure areas
+3. **Weekday vs Weekend Effect:** {:.4f} mph differential impact for weekdays vs weekends
+4. **CBD Usage Weekday Effect:** {:.4f} differential impact for CBD usage on weekdays vs weekends
+5. **Weekday vs Holiday Effect:** {} mph differential impact (if sufficient holiday data)
 
 ## Conclusions
 
@@ -843,12 +1246,15 @@ Based on the comprehensive analysis of NYC Yellow & Green Taxi hourly data:
     exec_summary['cbd_neighbor_in_change_pct'], neighbor_in_sig, exec_summary['neighbor_in_pvalue'],
     exec_summary['cbd_neighbor_out_change_pct'], neighbor_out_sig, exec_summary['neighbor_out_pvalue'],
     substitution_interp,
+    exec_summary['did_weekday_weekend_estimate'], exec_summary['did_cbd_daytype_estimate'],
+    'Sufficient' if weekday_holiday_did is not None else 'Insufficient',
+    df[df['day_type'] == 'Holiday'].shape[0] if df[df['day_type'] == 'Holiday'].shape[0] > 0 else 0,
     time_min, time_max,
     total_hours, pre_hours, post_hours,
     yellow_prop, green_prop,
     exec_summary['did_peak_estimate'], exec_summary['did_cbd_estimate'],
     pre_hours, post_hours, hours_ratio,
-    comparison_table.to_string(), peak_comparison_df.to_string(),
+    comparison_table.to_string(), peak_comparison_df.to_string(), day_type_comparison_df.to_string(),
     speed_effect_text, exec_summary['speed_change_pct'],
     cbd_change_dir, abs(exec_summary['cbd_inside_change_pct']), cbd_stat_sig,
     trips_change_dir, abs(exec_summary['trips_change_pct']), trips_suggest,
@@ -856,6 +1262,18 @@ Based on the comprehensive analysis of NYC Yellow & Green Taxi hourly data:
     exec_summary['cbd_neighbor_out_change_pct'], neighbor_out_sig, exec_summary['neighbor_out_pvalue'],
     substitution_detailed,
     exec_summary['did_peak_estimate'], exec_summary['did_cbd_estimate'],
+    exec_summary['did_weekday_weekend_estimate'], exec_summary['did_cbd_daytype_estimate'],
+    f"{exec_summary['did_weekday_holiday_estimate']:.4f}" if exec_summary['did_weekday_holiday_estimate'] is not None else "N/A (insufficient data)",
+    # Day type statistical tests
+    exec_summary.get('Weekday_speed_t_stat', 0), exec_summary.get('Weekday_speed_p_val', 1),
+    exec_summary.get('Weekday_cbd_t_stat', 0), exec_summary.get('Weekday_cbd_p_val', 1),
+    exec_summary.get('Weekday_trips_t_stat', 0), exec_summary.get('Weekday_trips_p_val', 1),
+    exec_summary.get('Weekend_speed_t_stat', 0), exec_summary.get('Weekend_speed_p_val', 1),
+    exec_summary.get('Weekend_cbd_t_stat', 0), exec_summary.get('Weekend_cbd_p_val', 1),
+    exec_summary.get('Weekend_trips_t_stat', 0), exec_summary.get('Weekend_trips_p_val', 1),
+    exec_summary.get('Holiday_speed_t_stat', 0), exec_summary.get('Holiday_speed_p_val', 1),
+    exec_summary.get('Holiday_cbd_t_stat', 0), exec_summary.get('Holiday_cbd_p_val', 1),
+    exec_summary.get('Holiday_trips_t_stat', 0), exec_summary.get('Holiday_trips_p_val', 1),
     speed_conclusion, usage_conclusion, substitution_conclusion, impact_conclusion
 )
 
@@ -891,9 +1309,18 @@ print(f"\n🔄 SUBSTITUTION EFFECT (CBD NEIGHBOR):")
 print(f"   • CBD Neighbor In: {exec_summary['cbd_neighbor_in_change_pct']:+.2f}% change (p = {exec_summary['neighbor_in_pvalue']:.4f})")
 print(f"   • CBD Neighbor Out: {exec_summary['cbd_neighbor_out_change_pct']:+.2f}% change (p = {exec_summary['neighbor_out_pvalue']:.4f})")
 
+print(f"\n📅 DAY TYPE ANALYSIS:")
+print(f"   • Weekday vs Weekend DiD: {exec_summary['did_weekday_weekend_estimate']:+.4f} mph")
+print(f"   • CBD Usage Weekday DiD: {exec_summary['did_cbd_daytype_estimate']:+.4f}")
+if exec_summary['did_weekday_holiday_estimate'] is not None:
+    print(f"   • Weekday vs Holiday DiD: {exec_summary['did_weekday_holiday_estimate']:+.4f} mph")
+else:
+    print(f"   • Weekday vs Holiday DiD: N/A (insufficient holiday data)")
+
 print(f"\n📈 DIFFERENCE-IN-DIFFERENCES:")
 print(f"   • Peak Hours Effect: {exec_summary['did_peak_estimate']:+.4f} mph")
 print(f"   • CBD Exposure Effect: {exec_summary['did_cbd_estimate']:+.4f} mph")
+print(f"   • Weekday vs Weekend Effect: {exec_summary['did_weekday_weekend_estimate']:+.4f} mph")
 
 print(f"\n📁 OUTPUT FILES:")
 print(f"   • Tables: tables/")
@@ -903,5 +1330,7 @@ print(f"   • Report: reports/cbd_taxi_simplified_analysis.md")
 print(f"\n✅ COMPREHENSIVE ANALYSIS COMPLETE!")
 print(f"   • Combined Yellow & Green Taxi data")
 print(f"   • CBD Neighbor substitution effect analysis included")
+print(f"   • Day type analysis (Weekday/Weekend/Holiday) included")
 print(f"   • DiD methodology fully documented")
+print(f"   • Holiday and weekend/weekday separate processing implemented")
 print("="*80)
