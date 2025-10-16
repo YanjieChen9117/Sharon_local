@@ -1,0 +1,4 @@
+treatment,N_Models,Mean_DiD_Estimate,Std_DiD_Estimate,Significant_Effects,Mean_R_Squared
+treatment_cbd,10,1536.8522,4693.85,8,0.0566
+treatment_peak,10,44.9226,131.2088,4,0.0969
+treatment_weekday,10,276.9865,836.8235,2,0.0197

@@ -1,0 +1,11 @@
+outcome,N_Models,Mean_DiD_Estimate,Std_DiD_Estimate,Significant_Effects,Mean_R_Squared
+avg_distance,3,-0.0672,0.0558,2,0.0351
+avg_duration,3,0.1557,0.194,2,0.0237
+avg_speed,3,-0.3756,0.3153,2,0.0501
+cbd_in_ratio,3,0.0009,0.0054,2,0.0207
+cbd_inside_ratio,3,0.0004,0.0028,0,0.1063
+cbd_neighbor_in_ratio,3,0.0012,0.0006,0,0.0606
+cbd_neighbor_out_ratio,3,0.0011,0.0011,2,0.1024
+cbd_out_ratio,3,0.0004,0.0056,2,0.1047
+total_revenue,3,5987.5226,7789.6812,1,0.0369
+total_trips,3,208.6313,238.6085,1,0.037
