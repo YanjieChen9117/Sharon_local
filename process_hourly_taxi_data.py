@@ -39,6 +39,21 @@ CBD_NEIGHBORHOODS = {
     140, 141, 142, 143, 237
 }
 
+# 节假日列表（来自is_holiday.md）
+HOLIDAYS = {
+    '2023-01-02', '2023-01-16', '2023-02-13', '2023-02-20', '2023-05-29',
+    '2023-06-19', '2023-07-04', '2023-09-04', '2023-10-09', '2023-11-07',
+    '2023-11-10', '2023-11-23', '2023-12-25', '2024-01-01', '2024-01-15',
+    '2024-02-12', '2024-02-19', '2024-05-27', '2024-06-19', '2024-07-04',
+    '2024-09-02', '2024-10-14', '2024-11-05', '2024-11-11', '2024-11-28',
+    '2024-12-25', '2025-01-01', '2025-01-20', '2025-02-12', '2025-02-17',
+    '2025-05-26', '2025-06-19', '2025-07-04', '2025-09-01', '2025-10-13',
+    '2025-11-04', '2025-11-11', '2025-11-27', '2025-12-25'
+}
+
+# 政策实施日期（假设为2024年1月1日，请根据实际情况调整）
+POLICY_DATE = pd.Timestamp('2025-01-05')
+
 
 class HourlyTaxiDataProcessor:
     """按小时处理出租车数据的处理器（支持Yellow & Green Taxi）"""
@@ -52,6 +67,48 @@ class HourlyTaxiDataProcessor:
         """
         self.data_dir = data_dir
         self.hourly_stats = []  # 存储所有小时的汇总数据
+        self.weather_data = self._load_weather_data()  # 加载天气数据
+    
+    def _load_weather_data(self):
+        """
+        加载天气数据
+        
+        返回:
+            DataFrame: 处理后的天气数据，包含日期、降水和降雪信息
+        """
+        try:
+            weather_file = os.path.join(self.data_dir, 'central_park_weather_records.csv')
+            if not os.path.exists(weather_file):
+                print(f"⚠ 警告: 天气数据文件不存在: {weather_file}")
+                return None
+            
+            # 读取天气数据
+            weather_df = pd.read_csv(weather_file)
+            
+            # 转换日期格式
+            weather_df['DATE'] = pd.to_datetime(weather_df['DATE'])
+            
+            # 处理降水量和降雪量，将字符串转换为数值
+            weather_df['PRCP'] = pd.to_numeric(weather_df['PRCP'], errors='coerce').fillna(0)
+            weather_df['SNOW'] = pd.to_numeric(weather_df['SNOW'], errors='coerce').fillna(0)
+            
+            # 创建天气特征
+            weather_df['is_rain'] = weather_df['PRCP'] > 0  # 有降水
+            weather_df['is_snow'] = weather_df['SNOW'] > 0  # 有降雪
+            
+            # 只保留需要的列
+            weather_df = weather_df[['DATE', 'PRCP', 'SNOW', 'is_rain', 'is_snow']].copy()
+            
+            print(f"✓ 成功加载天气数据: {len(weather_df)} 天的记录")
+            print(f"  日期范围: {weather_df['DATE'].min().date()} 至 {weather_df['DATE'].max().date()}")
+            print(f"  降雨天数: {weather_df['is_rain'].sum()} 天")
+            print(f"  降雪天数: {weather_df['is_snow'].sum()} 天")
+            
+            return weather_df
+            
+        except Exception as e:
+            print(f"❌ 加载天气数据失败: {str(e)}")
+            return None
     
     def normalize_taxi_data(self, df, taxi_type):
         """
@@ -244,8 +301,82 @@ class HourlyTaxiDataProcessor:
         )
         df['tip_rate'] = df['tip_rate'].replace([np.inf, -np.inf], np.nan)
         
-        # 提取小时信息 - 使用标准化后的字段名
-        df['pickup_hour'] = df['pickup_datetime'].dt.floor('H')  # 向下取整到小时
+        # 提取时间特征 - 使用标准化后的字段名
+        df['pickup_hour'] = df['pickup_datetime'].dt.floor('H')  # 向下取整到小时（用于聚合）
+        df['year'] = df['pickup_datetime'].dt.year
+        df['month'] = df['pickup_datetime'].dt.month
+        df['day'] = df['pickup_datetime'].dt.day  # 月份中的第几天
+        df['day_of_week'] = df['pickup_datetime'].dt.dayofweek  # 0=Monday, 6=Sunday
+        df['hour_of_day'] = df['pickup_datetime'].dt.hour
+        
+        # 添加政策状态标签
+        df['is_pre_policy'] = df['pickup_datetime'] < POLICY_DATE
+        df['policy_status'] = df['is_pre_policy'].map({True: 'pre-policy', False: 'post-policy'})
+        
+        # 添加周末状态标签
+        df['is_weekday'] = df['day_of_week'] < 5  # Monday-Friday = 0-4
+        df['weekend_status'] = df['is_weekday'].map({True: 'weekday', False: 'weekend'})
+        
+        # 添加节假日标签
+        df['date_str'] = df['pickup_datetime'].dt.strftime('%Y-%m-%d')
+        df['is_holiday_date'] = df['date_str'].isin(HOLIDAYS)
+        df['is_weekend'] = ~df['is_weekday']
+        df['holiday'] = df['is_holiday_date'] | df['is_weekend']  # 节假日或周末
+        
+        # 添加天气特征
+        df = self._add_weather_features(df)
+        
+        # 清理临时列
+        df = df.drop(columns=['is_pre_policy', 'is_weekday', 'date_str', 'is_holiday_date', 'is_weekend'])
+        
+        return df
+    
+    def _add_weather_features(self, df):
+        """
+        添加天气特征到出租车数据
+        
+        参数:
+            df: 出租车数据框
+            
+        返回:
+            DataFrame: 添加了天气特征的数据框
+        """
+        if self.weather_data is None:
+            print("  ⚠ 天气数据不可用，跳过天气特征")
+            # 添加默认值
+            df['is_rain'] = False
+            df['is_snow'] = False
+            return df
+        
+        # 提取日期（不包含时间）
+        df['pickup_date'] = df['pickup_datetime'].dt.date
+        
+        # 创建天气数据的日期副本用于匹配
+        weather_lookup = self.weather_data.copy()
+        weather_lookup['pickup_date'] = weather_lookup['DATE'].dt.date
+        
+        # 合并天气数据
+        df = df.merge(
+            weather_lookup[['pickup_date', 'is_rain', 'is_snow']], 
+            on='pickup_date', 
+            how='left'
+        )
+        
+        # 处理缺失值（对于没有天气数据的日期）
+        df['is_rain'] = df['is_rain'].fillna(False)
+        df['is_snow'] = df['is_snow'].fillna(False)
+        
+        # 清理临时列
+        df = df.drop(columns=['pickup_date'])
+        
+        # 统计天气情况
+        rain_trips = df['is_rain'].sum()
+        snow_trips = df['is_snow'].sum()
+        total_trips = len(df)
+        
+        if total_trips > 0:
+            print(f"  天气特征统计: 雨天行程={rain_trips:,} ({rain_trips/total_trips:.1%}), "
+                  f"雪天行程={snow_trips:,} ({snow_trips/total_trips:.1%})")
         
         return df
     
@@ -272,7 +403,7 @@ class HourlyTaxiDataProcessor:
     
     def aggregate_by_hour(self, df):
         """
-        按小时汇总数据
+        按小时汇总数据（合并Yellow和Green taxi数据）
         
         参数:
             df: 处理后的数据框
@@ -286,61 +417,170 @@ class HourlyTaxiDataProcessor:
         # 按小时分组
         hourly_groups = df.groupby('pickup_hour')
         
+        # 计算加权平均的辅助函数
+        def weighted_average(group, value_col, weight_col='total_trips_temp'):
+            """计算加权平均值"""
+            if weight_col not in group.columns:
+                return group[value_col].mean()
+            weights = group[weight_col]
+            if weights.sum() == 0:
+                return group[value_col].mean()
+            return (group[value_col] * weights).sum() / weights.sum()
+        
+        # 为每个分组添加临时的行程数量列用于加权
+        def add_trip_counts(group):
+            group['total_trips_temp'] = len(group)
+            return group
+        
+        df_with_counts = df.groupby('pickup_hour').apply(add_trip_counts).reset_index(drop=True)
+        
+        # 重新按小时分组（使用带计数的数据）
+        hourly_groups_new = df_with_counts.groupby('pickup_hour')
+        
         # 计算汇总统计
         hourly_summary = pd.DataFrame({
-            # 基本统计
-            'total_trips': hourly_groups.size(),
-            'avg_distance': hourly_groups['trip_distance'].mean(),
-            'avg_passengers': hourly_groups['passenger_count'].mean(),
-            'avg_duration': hourly_groups['trip_duration_min'].mean(),
-            'avg_speed': hourly_groups['avg_speed_mph'].mean(),
-            'avg_tip_rate': hourly_groups['tip_rate'].mean(),
+            # 时间特征（取每小时的第一个值，因为同一小时内这些值相同）
+            'pickup_hour': hourly_groups_new['pickup_hour'].first(),  # 保留作为第一列用于标识
+            'year': hourly_groups_new['year'].first(),
+            'month': hourly_groups_new['month'].first(),
+            'day': hourly_groups_new['day'].first(),
+            'day_of_week': hourly_groups_new['day_of_week'].first(),
+            'hour_of_day': hourly_groups_new['hour_of_day'].first(),
             
-            # CBD交互比例
-            'cbd_inside_ratio': hourly_groups.apply(
+            # 状态标签（取每小时的第一个值）
+            'policy_status': hourly_groups_new['policy_status'].first(),
+            'weekend_status': hourly_groups_new['weekend_status'].first(),
+            'holiday': hourly_groups_new['holiday'].first(),
+            
+            # 天气特征（取每小时的第一个值，因为同一天内天气相同）
+            'is_rain': hourly_groups_new['is_rain'].first(),
+            'is_snow': hourly_groups_new['is_snow'].first(),
+            
+            # 基本统计（合并Yellow和Green数据）
+            'total_trips': hourly_groups_new.size(),
+            'avg_distance': hourly_groups_new.apply(lambda x: weighted_average(x, 'trip_distance')),
+            'avg_passengers': hourly_groups_new.apply(lambda x: weighted_average(x, 'passenger_count')),
+            'avg_duration': hourly_groups_new.apply(lambda x: weighted_average(x, 'trip_duration_min')),
+            'avg_speed': hourly_groups_new.apply(lambda x: weighted_average(x, 'avg_speed_mph')),
+            'avg_tip_rate': hourly_groups_new.apply(lambda x: weighted_average(x, 'tip_rate')),
+            
+            # 新增：离开CBD行程的平均速度
+            'avg_speed_out_CBD': hourly_groups_new.apply(
+                lambda x: x[x['cbd_interaction'] == 'out']['avg_speed_mph'].mean() if (x['cbd_interaction'] == 'out').any() else np.nan
+            ),
+            
+            # CBD交互比例（合并计算）
+            'cbd_inside_ratio': hourly_groups_new.apply(
                 lambda x: (x['cbd_interaction'] == 'inside').sum() / len(x)
             ),
-            'cbd_in_ratio': hourly_groups.apply(
+            'cbd_in_ratio': hourly_groups_new.apply(
                 lambda x: (x['cbd_interaction'] == 'in').sum() / len(x)
             ),
-            'cbd_out_ratio': hourly_groups.apply(
+            'cbd_out_ratio': hourly_groups_new.apply(
                 lambda x: (x['cbd_interaction'] == 'out').sum() / len(x)
             ),
-            'cbd_non_ratio': hourly_groups.apply(
+            'cbd_non_ratio': hourly_groups_new.apply(
                 lambda x: (x['cbd_interaction'] == 'non').sum() / len(x)
             ),
             
-            # CBD Neighbor交互比例
-            'cbd_neighbor_inside_ratio': hourly_groups.apply(
+            # CBD Neighbor交互比例（合并计算）
+            'cbd_neighbor_inside_ratio': hourly_groups_new.apply(
                 lambda x: (x['cbd_neighbor_interaction'] == 'neighbor_inside').sum() / len(x)
             ),
-            'cbd_neighbor_in_ratio': hourly_groups.apply(
+            'cbd_neighbor_in_ratio': hourly_groups_new.apply(
                 lambda x: (x['cbd_neighbor_interaction'] == 'neighbor_in').sum() / len(x)
             ),
-            'cbd_neighbor_out_ratio': hourly_groups.apply(
+            'cbd_neighbor_out_ratio': hourly_groups_new.apply(
                 lambda x: (x['cbd_neighbor_interaction'] == 'neighbor_out').sum() / len(x)
             ),
-            'cbd_neighbor_non_ratio': hourly_groups.apply(
+            'cbd_neighbor_non_ratio': hourly_groups_new.apply(
                 lambda x: (x['cbd_neighbor_interaction'] == 'neighbor_non').sum() / len(x)
             ),
             
-            # 额外的有用指标
-            'total_revenue': hourly_groups['total_amount'].sum(),
-            'avg_fare': hourly_groups['fare_amount'].mean(),
+            # 财务指标（合并计算）
+            'total_revenue': hourly_groups_new['total_amount'].sum(),
+            'avg_fare': hourly_groups_new.apply(lambda x: weighted_average(x, 'fare_amount')),
             
-            # 出租车类型分布（如果有多种类型）
-            'yellow_ratio': hourly_groups.apply(
+            # 出租车类型分布（真实比例）
+            'yellow_ratio': hourly_groups_new.apply(
                 lambda x: (x['taxi_type'] == 'yellow').sum() / len(x) if 'taxi_type' in x.columns else 1.0
             ),
-            'green_ratio': hourly_groups.apply(
+            'green_ratio': hourly_groups_new.apply(
                 lambda x: (x['taxi_type'] == 'green').sum() / len(x) if 'taxi_type' in x.columns else 0.0
             ),
         })
         
-        # 重置索引，使pickup_hour成为一列
-        hourly_summary = hourly_summary.reset_index()
+        # 重置索引
+        hourly_summary = hourly_summary.reset_index(drop=True)
         
         return hourly_summary
+    
+    def _merge_duplicate_hours(self, df):
+        """
+        合并同一小时的重复记录（来自不同出租车类型）
+        
+        参数:
+            df: 包含重复小时记录的数据框
+            
+        返回:
+            DataFrame: 合并后的数据框
+        """
+        # 按pickup_hour分组并合并
+        def merge_hour_group(group):
+            if len(group) == 1:
+                return group.iloc[0]
+            
+            # 计算总行程数用于加权平均
+            total_trips = group['total_trips'].sum()
+            
+            # 创建合并后的记录
+            merged = group.iloc[0].copy()  # 复制第一行作为基础
+            
+            # 更新需要合并的字段
+            merged['total_trips'] = total_trips
+            merged['total_revenue'] = group['total_revenue'].sum()
+            
+            # 加权平均的字段
+            if total_trips > 0:
+                weights = group['total_trips']
+                merged['avg_distance'] = (group['avg_distance'] * weights).sum() / total_trips
+                merged['avg_passengers'] = (group['avg_passengers'] * weights).sum() / total_trips
+                merged['avg_duration'] = (group['avg_duration'] * weights).sum() / total_trips
+                merged['avg_speed'] = (group['avg_speed'] * weights).sum() / total_trips
+                merged['avg_fare'] = (group['avg_fare'] * weights).sum() / total_trips
+                
+                # 处理可能包含NaN的字段
+                valid_tip_rates = group['avg_tip_rate'].dropna()
+                valid_weights = weights[group['avg_tip_rate'].notna()]
+                if len(valid_tip_rates) > 0 and valid_weights.sum() > 0:
+                    merged['avg_tip_rate'] = (valid_tip_rates * valid_weights).sum() / valid_weights.sum()
+                
+                valid_cbd_speeds = group['avg_speed_out_CBD'].dropna()
+                valid_cbd_weights = weights[group['avg_speed_out_CBD'].notna()]
+                if len(valid_cbd_speeds) > 0 and valid_cbd_weights.sum() > 0:
+                    merged['avg_speed_out_CBD'] = (valid_cbd_speeds * valid_cbd_weights).sum() / valid_cbd_weights.sum()
+            
+            # 比例字段需要重新计算（基于总行程数）
+            total_yellow = (group['yellow_ratio'] * group['total_trips']).sum()
+            total_green = (group['green_ratio'] * group['total_trips']).sum()
+            
+            merged['yellow_ratio'] = total_yellow / total_trips if total_trips > 0 else 0
+            merged['green_ratio'] = total_green / total_trips if total_trips > 0 else 0
+            
+            # CBD相关比例也需要重新计算
+            for ratio_col in ['cbd_inside_ratio', 'cbd_in_ratio', 'cbd_out_ratio', 'cbd_non_ratio',
+                             'cbd_neighbor_inside_ratio', 'cbd_neighbor_in_ratio', 
+                             'cbd_neighbor_out_ratio', 'cbd_neighbor_non_ratio']:
+                if ratio_col in group.columns:
+                    total_ratio_trips = (group[ratio_col] * group['total_trips']).sum()
+                    merged[ratio_col] = total_ratio_trips / total_trips if total_trips > 0 else 0
+            
+            return merged
+        
+        # 按pickup_hour分组并应用合并函数
+        merged_df = df.groupby('pickup_hour').apply(merge_hour_group).reset_index(drop=True)
+        
+        return merged_df
     
     def process_monthly_file(self, file_path):
         """
@@ -480,7 +720,13 @@ class HourlyTaxiDataProcessor:
         # 合并所有月份的小时数据
         all_hourly_data = pd.concat(self.hourly_stats, ignore_index=True)
         
-        # 按时间排序
+        # 检查是否需要进一步合并同一小时的不同出租车类型数据
+        duplicate_hours = all_hourly_data.duplicated(subset=['pickup_hour'], keep=False)
+        if duplicate_hours.any():
+            print(f"  发现 {duplicate_hours.sum()} 个重复小时记录，正在合并...")
+            all_hourly_data = self._merge_duplicate_hours(all_hourly_data)
+        
+        # 按时间排序（使用pickup_hour作为主要排序键）
         all_hourly_data = all_hourly_data.sort_values('pickup_hour').reset_index(drop=True)
         
         # 保存为CSV
@@ -506,6 +752,7 @@ class HourlyTaxiDataProcessor:
         print(f"平均行程距离: {all_hourly_data['avg_distance'].mean():.2f} 英里")
         print(f"平均行程时长: {all_hourly_data['avg_duration'].mean():.2f} 分钟")
         print(f"平均速度: {all_hourly_data['avg_speed'].mean():.2f} mph")
+        print(f"平均离开CBD速度: {all_hourly_data['avg_speed_out_CBD'].mean():.2f} mph")
         print(f"平均小费率: {all_hourly_data['avg_tip_rate'].mean():.2%}")
         print(f"\nCBD交互平均比例:")
         print(f"  CBD内部 (inside): {all_hourly_data['cbd_inside_ratio'].mean():.2%}")
@@ -520,6 +767,15 @@ class HourlyTaxiDataProcessor:
         print(f"\n出租车类型分布:")
         print(f"  Yellow Taxi平均比例: {all_hourly_data['yellow_ratio'].mean():.2%}")
         print(f"  Green Taxi平均比例: {all_hourly_data['green_ratio'].mean():.2%}")
+        print(f"\n状态标签分布:")
+        print(f"  政策前期比例: {(all_hourly_data['policy_status'] == 'pre-policy').mean():.2%}")
+        print(f"  政策后期比例: {(all_hourly_data['policy_status'] == 'post-policy').mean():.2%}")
+        print(f"  工作日比例: {(all_hourly_data['weekend_status'] == 'weekday').mean():.2%}")
+        print(f"  周末比例: {(all_hourly_data['weekend_status'] == 'weekend').mean():.2%}")
+        print(f"  节假日比例: {all_hourly_data['holiday'].mean():.2%}")
+        print(f"\n天气特征分布:")
+        print(f"  雨天比例: {all_hourly_data['is_rain'].mean():.2%}")
+        print(f"  雪天比例: {all_hourly_data['is_snow'].mean():.2%}")
         print("="*80)
         
         return all_hourly_data
