@@ -54,6 +54,47 @@ HOLIDAYS = {
 # 政策实施日期（假设为2024年1月1日，请根据实际情况调整）
 POLICY_DATE = pd.Timestamp('2025-01-05')
 
+# NTA映射字典（从NTA_lookup.md解析）
+NTA_MAPPING = {
+    12: 'MN0191', 104: 'MN0191',
+    13: 'MN0101', 261: 'MN0101', 37: 'MN0101', 38: 'MN0101', 209: 'MN0101',
+    231: 'MN0102',
+    45: 'MN0301',
+    125: 'MN0201', 211: 'MN0201', 144: 'MN0201',
+    148: 'MN0302', 232: 'MN0302',
+    158: 'MN0203', 249: 'MN0203',
+    113: 'MN0202', 114: 'MN0202',
+    4: 'MN0303', 79: 'MN0303',
+    246: 'MN0401', 68: 'MN0401', 90: 'MN0401',
+    186: 'MN0501', 234: 'MN0501', 164: 'MN0501', 100: 'MN0501',
+    107: 'MN0602',
+    224: 'MN0601',
+    137: 'MN0603', 233: 'MN0603', 170: 'MN0603',
+    50: 'MN0402', 48: 'MN0402',
+    230: 'MN0502', 163: 'MN0502', 161: 'MN0502',
+    162: 'MN0604', 299: 'MN0604',
+    142: 'MN0701', 143: 'MN0701',
+    238: 'MN0702', 239: 'MN0702',
+    154: 'MN0703', 21: 'MN0703',
+    43: 'MN6491',
+    236: 'MN0802', 237: 'MN0802',
+    140: 'MN0801', 141: 'MN0801', 202: 'MN0801',
+    262: 'MN0803', 263: 'MN0803',
+    75: 'MN1101',
+    74: 'MN1102',
+    41: 'MN1001',
+    166: 'MN0901',
+    152: 'MN0902',
+    42: 'MN1002',
+    116: 'MN0903',
+    244: 'MN1202',
+    120: 'MN1291',
+    243: 'MN1202',
+    128: 'MN1292',
+    127: 'MN1203',
+    194: 'MN1191'
+}
+
 
 class HourlyTaxiDataProcessor:
     """按小时处理出租车数据的处理器（支持Yellow & Green Taxi）"""
@@ -326,6 +367,9 @@ class HourlyTaxiDataProcessor:
         # 添加天气特征
         df = self._add_weather_features(df)
         
+        # 添加NTA映射
+        df = self._add_nta_mapping(df)
+        
         # 清理临时列
         df = df.drop(columns=['is_pre_policy', 'is_weekday', 'date_str', 'is_holiday_date', 'is_weekend'])
         
@@ -377,6 +421,32 @@ class HourlyTaxiDataProcessor:
         if total_trips > 0:
             print(f"  天气特征统计: 雨天行程={rain_trips:,} ({rain_trips/total_trips:.1%}), "
                   f"雪天行程={snow_trips:,} ({snow_trips/total_trips:.1%})")
+        
+        return df
+    
+    def _add_nta_mapping(self, df):
+        """
+        添加NTA区域映射到出租车数据
+        
+        参数:
+            df: 出租车数据框
+            
+        返回:
+            DataFrame: 添加了PUNTA和DONTA列的数据框
+        """
+        # 为上车地点添加NTA映射
+        df['PUNTA'] = df['PULocationID'].map(NTA_MAPPING)
+        
+        # 为下车地点添加NTA映射
+        df['DONTA'] = df['DOLocationID'].map(NTA_MAPPING)
+        
+        # 统计NTA映射情况
+        punta_mapped = df['PUNTA'].notna().sum()
+        donta_mapped = df['DONTA'].notna().sum()
+        total_trips = len(df)
+        
+        print(f"  NTA映射统计: PUNTA映射={punta_mapped:,} ({punta_mapped/total_trips:.1%}), "
+              f"DONTA映射={donta_mapped:,} ({donta_mapped/total_trips:.1%})")
         
         return df
     
@@ -508,6 +578,14 @@ class HourlyTaxiDataProcessor:
             'green_ratio': hourly_groups_new.apply(
                 lambda x: (x['taxi_type'] == 'green').sum() / len(x) if 'taxi_type' in x.columns else 0.0
             ),
+            
+            # NTA区域特定统计
+            'mn0401_pickup_trips': hourly_groups_new.apply(
+                lambda x: (x['PUNTA'] == 'MN0401').sum()
+            ),
+            'mn0502_dropoff_trips': hourly_groups_new.apply(
+                lambda x: (x['DONTA'] == 'MN0502').sum()
+            ),
         })
         
         # 重置索引
@@ -539,6 +617,10 @@ class HourlyTaxiDataProcessor:
             # 更新需要合并的字段
             merged['total_trips'] = total_trips
             merged['total_revenue'] = group['total_revenue'].sum()
+            
+            # 合并NTA特定统计
+            merged['mn0401_pickup_trips'] = group['mn0401_pickup_trips'].sum()
+            merged['mn0502_dropoff_trips'] = group['mn0502_dropoff_trips'].sum()
             
             # 加权平均的字段
             if total_trips > 0:
@@ -776,6 +858,11 @@ class HourlyTaxiDataProcessor:
         print(f"\n天气特征分布:")
         print(f"  雨天比例: {all_hourly_data['is_rain'].mean():.2%}")
         print(f"  雪天比例: {all_hourly_data['is_snow'].mean():.2%}")
+        print(f"\nNTA区域特定统计:")
+        print(f"  MN0401区域上车总行程数: {all_hourly_data['mn0401_pickup_trips'].sum():,.0f}")
+        print(f"  MN0502区域下车总行程数: {all_hourly_data['mn0502_dropoff_trips'].sum():,.0f}")
+        print(f"  平均每小时MN0401上车数: {all_hourly_data['mn0401_pickup_trips'].mean():.1f}")
+        print(f"  平均每小时MN0502下车数: {all_hourly_data['mn0502_dropoff_trips'].mean():.1f}")
         print("="*80)
         
         return all_hourly_data
