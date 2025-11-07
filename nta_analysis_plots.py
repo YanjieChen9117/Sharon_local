@@ -9,8 +9,8 @@ Features:
 3. Plot moving average charts to show time series trends
 4. Generate multiple visualization charts
 
-Author: AI Assistant
-Date: 2025-01-08
+Author: Yanjie Chen
+Date: 2025-11-01
 """
 
 import pandas as pd

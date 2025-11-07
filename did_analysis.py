@@ -21,8 +21,8 @@ Y = β₀ + β₁*Treatment + β₂*Post + β₃*(Treatment*Post) + β₄*Contro
 - Post: 1 if post-policy period, 0 if pre-policy period
 - Treatment*Post: 交互项，捕捉政策效应
 
-作者: AI Assistant
-日期: 2025-01-27
+作者: Yanjie Chen
+日期: 2025-11-01
 """
 
 import pandas as pd
