@@ -14,7 +14,7 @@ NYC出租车数据按小时汇总处理脚本（支持Yellow & Green Taxi）
 - Yellow Taxi: yellow_tripdata_*.parquet
 - Green Taxi: green_tripdata_*.parquet
 
-作者: AI Assistant
+作者: Yanjie Chen
 日期: 2025-10-08
 """
 

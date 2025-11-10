@@ -16,8 +16,8 @@ NYC出租车数据按小时+NTA到达区域聚合处理脚本
 输出：
 - 每行代表某个小时中到达某个NTA区域的所有行程的聚合数据
 
-作者: AI Assistant
-日期: 2025-01-08
+作者: Yanjie Chen
+日期: 2025-11-08
 """
 
 import pandas as pd
@@ -123,17 +123,29 @@ class NTAHourlyTaxiDataProcessorDropoff:
             weather_df['PRCP'] = pd.to_numeric(weather_df['PRCP'], errors='coerce').fillna(0)
             weather_df['SNOW'] = pd.to_numeric(weather_df['SNOW'], errors='coerce').fillna(0)
             
+            # 处理温度数据，将字符串转换为数值
+            weather_df['TMAX'] = pd.to_numeric(weather_df['TMAX'], errors='coerce')
+            weather_df['TMIN'] = pd.to_numeric(weather_df['TMIN'], errors='coerce')
+            
             # 创建天气特征
             weather_df['is_rain'] = weather_df['PRCP'] > 0  # 有降水
             weather_df['is_snow'] = weather_df['SNOW'] > 0  # 有降雪
             
+            # 计算平均温度：(TMAX + TMIN) / 2
+            weather_df['temperature'] = (weather_df['TMAX'] + weather_df['TMIN']) / 2
+            
             # 只保留需要的列
-            weather_df = weather_df[['DATE', 'PRCP', 'SNOW', 'is_rain', 'is_snow']].copy()
+            weather_df = weather_df[['DATE', 'PRCP', 'SNOW', 'is_rain', 'is_snow', 'temperature']].copy()
             
             print(f"✓ 成功加载天气数据: {len(weather_df)} 天的记录")
             print(f"  日期范围: {weather_df['DATE'].min().date()} 至 {weather_df['DATE'].max().date()}")
             print(f"  降雨天数: {weather_df['is_rain'].sum()} 天")
             print(f"  降雪天数: {weather_df['is_snow'].sum()} 天")
+            temp_valid = weather_df['temperature'].dropna()
+            if len(temp_valid) > 0:
+                print(f"  平均温度范围: {temp_valid.min():.1f}°F 至 {temp_valid.max():.1f}°F")
+            else:
+                print(f"  平均温度范围: 无有效数据")
             
             return weather_df
             
@@ -331,6 +343,7 @@ class NTAHourlyTaxiDataProcessorDropoff:
             # 添加默认值
             df['is_rain'] = False
             df['is_snow'] = False
+            df['temperature'] = np.nan
             return df
         
         # 提取日期（不包含时间）
@@ -342,7 +355,7 @@ class NTAHourlyTaxiDataProcessorDropoff:
         
         # 合并天气数据
         df = df.merge(
-            weather_lookup[['pickup_date', 'is_rain', 'is_snow']], 
+            weather_lookup[['pickup_date', 'is_rain', 'is_snow', 'temperature']], 
             on='pickup_date', 
             how='left'
         )
@@ -350,6 +363,7 @@ class NTAHourlyTaxiDataProcessorDropoff:
         # 处理缺失值（对于没有天气数据的日期）
         df['is_rain'] = df['is_rain'].fillna(False)
         df['is_snow'] = df['is_snow'].fillna(False)
+        # 温度保持为NaN（不填充，因为缺失值可能表示数据缺失）
         
         # 清理临时列
         df = df.drop(columns=['pickup_date'])
@@ -358,10 +372,12 @@ class NTAHourlyTaxiDataProcessorDropoff:
         rain_trips = df['is_rain'].sum()
         snow_trips = df['is_snow'].sum()
         total_trips = len(df)
+        temp_available = df['temperature'].notna().sum()
         
         if total_trips > 0:
             print(f"  天气特征统计: 雨天行程={rain_trips:,} ({rain_trips/total_trips:.1%}), "
-                  f"雪天行程={snow_trips:,} ({snow_trips/total_trips:.1%})")
+                  f"雪天行程={snow_trips:,} ({snow_trips/total_trips:.1%}), "
+                  f"有温度数据={temp_available:,} ({temp_available/total_trips:.1%})")
         
         return df
     
@@ -421,6 +437,7 @@ class NTAHourlyTaxiDataProcessorDropoff:
             # 天气特征（取每组的第一个值，因为同一天内天气相同）
             'is_rain': grouped['is_rain'].first(),
             'is_snow': grouped['is_snow'].first(),
+            'temperature': grouped['temperature'].first(),
             
             # 聚合特征
             'total_trips': grouped.size(),
@@ -646,6 +663,11 @@ class NTAHourlyTaxiDataProcessorDropoff:
         print(f"\n天气特征分布:")
         print(f"  雨天比例: {all_aggregated_data['is_rain'].mean():.2%}")
         print(f"  雪天比例: {all_aggregated_data['is_snow'].mean():.2%}")
+        temp_data = all_aggregated_data['temperature'].dropna()
+        if len(temp_data) > 0:
+            print(f"  平均温度: {temp_data.mean():.1f}°F")
+            print(f"  温度范围: {temp_data.min():.1f}°F 至 {temp_data.max():.1f}°F")
+            print(f"  有温度数据比例: {len(temp_data) / len(all_aggregated_data):.2%}")
         print(f"\nNTA区域统计:")
         top_ntas = all_aggregated_data.groupby('DONTA')['total_trips'].sum().sort_values(ascending=False).head(10)
         print("  前10个NTA区域（按总行程数）:")
