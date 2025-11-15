@@ -8,3 +8,5 @@ data/nta_hourly_taxi_summary_dropoff.csv
 # macOS system files
 .DS_Store
 *.DS_Store
+
+data/archive/

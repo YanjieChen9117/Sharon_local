@@ -1,23 +1,25 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-NYC出租车数据按小时+NTA到达区域聚合处理脚本
+NYC出租车数据按小时+NTA区域聚合处理脚本（区域视角）
 
 功能：
 1. 循环读取data/文件夹中的每月出租车数据（Yellow & Green，同时读取并合并）
 2. 进行数据清洗和特征工程
-3. 按小时+NTA到达区域聚合数据
-4. 保存所有月份的聚合数据供后续分析
+3. 按小时+NTA区域聚合数据（包含inflow和outflow特征）
+4. 使用NTA级别的天气数据
+5. 保存所有月份的聚合数据供后续分析
 
 数据源：
 - Yellow Taxi: yellow_tripdata_*.parquet
 - Green Taxi: green_tripdata_*.parquet
+- NTA Weather Data: nta_weather_data.csv
 
 输出：
-- 每行代表某个小时中到达某个NTA区域的所有行程的聚合数据
+- 每行代表某个小时中某个NTA区域的聚合数据（包含inflow和outflow特征）
 
 作者: Yanjie Chen
-日期: 2025-11-08
+日期: 2025-11-15
 """
 
 import pandas as pd
@@ -86,8 +88,8 @@ NTA_MAPPING = {
 }
 
 
-class NTAHourlyTaxiDataProcessorDropoff:
-    """按小时+NTA到达区域处理出租车数据的处理器（合并Yellow & Green Taxi）"""
+class NTAZoneHourlyTaxiDataProcessor:
+    """按小时+NTA区域处理出租车数据的处理器（区域视角，包含inflow和outflow）"""
     
     def __init__(self, data_dir):
         """
@@ -98,59 +100,63 @@ class NTAHourlyTaxiDataProcessorDropoff:
         """
         self.data_dir = data_dir
         self.aggregated_stats = []  # 存储所有聚合数据
-        self.weather_data = self._load_weather_data()  # 加载天气数据
+        self.weather_data = self._load_weather_data()  # 加载NTA天气数据
     
     def _load_weather_data(self):
         """
-        加载天气数据
+        加载NTA级别的天气数据
         
         返回:
-            DataFrame: 处理后的天气数据，包含日期、降水和降雪信息
+            DataFrame: 处理后的天气数据，包含datetime、nta_code和天气特征
         """
         try:
-            weather_file = os.path.join(self.data_dir, 'central_park_weather_records.csv')
+            weather_file = os.path.join(self.data_dir, 'nta_weather_data.csv')
             if not os.path.exists(weather_file):
-                print(f"⚠ 警告: 天气数据文件不存在: {weather_file}")
+                print(f"⚠ 警告: NTA天气数据文件不存在: {weather_file}")
                 return None
             
             # 读取天气数据
             weather_df = pd.read_csv(weather_file)
             
             # 转换日期格式
-            weather_df['DATE'] = pd.to_datetime(weather_df['DATE'])
+            weather_df['datetime'] = pd.to_datetime(weather_df['datetime'])
             
-            # 处理降水量和降雪量，将字符串转换为数值
-            weather_df['PRCP'] = pd.to_numeric(weather_df['PRCP'], errors='coerce').fillna(0)
-            weather_df['SNOW'] = pd.to_numeric(weather_df['SNOW'], errors='coerce').fillna(0)
+            # 处理数值列，将字符串转换为数值
+            weather_df['temperature'] = pd.to_numeric(weather_df['temperature'], errors='coerce')
+            weather_df['precipitation'] = pd.to_numeric(weather_df['precipitation'], errors='coerce').fillna(0)
+            weather_df['windspeed'] = pd.to_numeric(weather_df['windspeed'], errors='coerce')
+            weather_df['humidity'] = pd.to_numeric(weather_df['humidity'], errors='coerce')
             
-            # 处理温度数据，将字符串转换为数值
-            weather_df['TMAX'] = pd.to_numeric(weather_df['TMAX'], errors='coerce')
-            weather_df['TMIN'] = pd.to_numeric(weather_df['TMIN'], errors='coerce')
-            
-            # 创建天气特征
-            weather_df['is_rain'] = weather_df['PRCP'] > 0  # 有降水
-            weather_df['is_snow'] = weather_df['SNOW'] > 0  # 有降雪
-            
-            # 计算平均温度：(TMAX + TMIN) / 2
-            weather_df['temperature'] = (weather_df['TMAX'] + weather_df['TMIN']) / 2
+            # 重命名列以匹配输出要求
+            weather_df = weather_df.rename(columns={
+                'datetime': 'hour_index',
+                'nta_code': 'NTA_zone',
+                'temperature': 'weather_temperature',
+                'precipitation': 'weather_precipitation',
+                'windspeed': 'weather_windspeed',
+                'humidity': 'weather_humidity'
+            })
             
             # 只保留需要的列
-            weather_df = weather_df[['DATE', 'PRCP', 'SNOW', 'is_rain', 'is_snow', 'temperature']].copy()
+            weather_df = weather_df[['hour_index', 'NTA_zone', 'weather_temperature', 
+                                     'weather_precipitation', 'weather_windspeed', 'weather_humidity']].copy()
             
-            print(f"✓ 成功加载天气数据: {len(weather_df)} 天的记录")
-            print(f"  日期范围: {weather_df['DATE'].min().date()} 至 {weather_df['DATE'].max().date()}")
-            print(f"  降雨天数: {weather_df['is_rain'].sum()} 天")
-            print(f"  降雪天数: {weather_df['is_snow'].sum()} 天")
-            temp_valid = weather_df['temperature'].dropna()
-            if len(temp_valid) > 0:
-                print(f"  平均温度范围: {temp_valid.min():.1f}°F 至 {temp_valid.max():.1f}°F")
-            else:
-                print(f"  平均温度范围: 无有效数据")
+            # 将hour_index向下取整到小时（确保匹配）
+            weather_df['hour_index'] = weather_df['hour_index'].dt.floor('H')
+            
+            print(f"✓ 成功加载NTA天气数据: {len(weather_df)} 条记录")
+            print(f"  时间范围: {weather_df['hour_index'].min()} 至 {weather_df['hour_index'].max()}")
+            print(f"  NTA区域数: {weather_df['NTA_zone'].nunique()}")
+            print(f"  有温度数据: {weather_df['weather_temperature'].notna().sum()} 条")
+            print(f"  有风速数据: {weather_df['weather_windspeed'].notna().sum()} 条")
+            print(f"  有湿度数据: {weather_df['weather_humidity'].notna().sum()} 条")
             
             return weather_df
             
         except Exception as e:
-            print(f"❌ 加载天气数据失败: {str(e)}")
+            print(f"❌ 加载NTA天气数据失败: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return None
     
     def normalize_taxi_data(self, df, taxi_type):
@@ -284,16 +290,9 @@ class NTAHourlyTaxiDataProcessorDropoff:
         # 移除速度异常的记录（小于0或大于100mph）
         df = df[(df['avg_speed_mph'] > 0) & (df['avg_speed_mph'] < 100)]
         
-        # 计算小费率（仅针对信用卡支付，payment_type=1）
-        df['tip_rate'] = np.where(
-            df['payment_type'] == 1,
-            df['tip_amount'] / df['fare_amount'],
-            np.nan
-        )
-        df['tip_rate'] = df['tip_rate'].replace([np.inf, -np.inf], np.nan)
-        
         # 提取时间特征 - 向下取整到小时（用于聚合）
-        df['pickup_hour'] = df['pickup_datetime'].dt.floor('H')
+        df['hour_index'] = df['pickup_datetime'].dt.floor('H')
+        df['dropoff_hour'] = df['dropoff_datetime'].dt.floor('H')
         df['year'] = df['pickup_datetime'].dt.year
         df['month'] = df['pickup_datetime'].dt.month
         df['day'] = df['pickup_datetime'].dt.day  # 月份中的第几天
@@ -314,151 +313,231 @@ class NTAHourlyTaxiDataProcessorDropoff:
         df['is_weekend'] = ~df['is_weekday']
         df['holiday'] = df['is_holiday_date'] | df['is_weekend']  # 节假日或周末
         
-        # 添加天气特征
-        df = self._add_weather_features(df)
-        
-        # 添加NTA映射
+        # 添加NTA映射（同时映射出发和到达）
         df = self._add_nta_mapping(df)
         
         # 只保留有NTA映射的记录（因为我们按NTA聚合）
-        df = df[df['DONTA'].notna()].copy()
+        df = df[(df['PUNTA'].notna()) | (df['DONTA'].notna())].copy()
         
         # 清理临时列
         df = df.drop(columns=['is_pre_policy', 'is_weekday', 'date_str', 'is_holiday_date', 'is_weekend'])
         
         return df
     
-    def _add_weather_features(self, df):
-        """
-        添加天气特征到出租车数据
-        
-        参数:
-            df: 出租车数据框
-            
-        返回:
-            DataFrame: 添加了天气特征的数据框
-        """
-        if self.weather_data is None:
-            print("  ⚠ 天气数据不可用，跳过天气特征")
-            # 添加默认值
-            df['is_rain'] = False
-            df['is_snow'] = False
-            df['temperature'] = np.nan
-            return df
-        
-        # 提取日期（不包含时间）
-        df['pickup_date'] = df['pickup_datetime'].dt.date
-        
-        # 创建天气数据的日期副本用于匹配
-        weather_lookup = self.weather_data.copy()
-        weather_lookup['pickup_date'] = weather_lookup['DATE'].dt.date
-        
-        # 合并天气数据
-        df = df.merge(
-            weather_lookup[['pickup_date', 'is_rain', 'is_snow', 'temperature']], 
-            on='pickup_date', 
-            how='left'
-        )
-        
-        # 处理缺失值（对于没有天气数据的日期）
-        df['is_rain'] = df['is_rain'].fillna(False)
-        df['is_snow'] = df['is_snow'].fillna(False)
-        # 温度保持为NaN（不填充，因为缺失值可能表示数据缺失）
-        
-        # 清理临时列
-        df = df.drop(columns=['pickup_date'])
-        
-        # 统计天气情况
-        rain_trips = df['is_rain'].sum()
-        snow_trips = df['is_snow'].sum()
-        total_trips = len(df)
-        temp_available = df['temperature'].notna().sum()
-        
-        if total_trips > 0:
-            print(f"  天气特征统计: 雨天行程={rain_trips:,} ({rain_trips/total_trips:.1%}), "
-                  f"雪天行程={snow_trips:,} ({snow_trips/total_trips:.1%}), "
-                  f"有温度数据={temp_available:,} ({temp_available/total_trips:.1%})")
-        
-        return df
-    
     def _add_nta_mapping(self, df):
         """
-        添加NTA区域映射到出租车数据
+        添加NTA区域映射到出租车数据（同时映射出发和到达）
         
         参数:
             df: 出租车数据框
             
         返回:
-            DataFrame: 添加了DONTA列的数据框
+            DataFrame: 添加了PUNTA和DONTA列的数据框
         """
+        # 为上车地点添加NTA映射
+        df['PUNTA'] = df['PULocationID'].map(NTA_MAPPING)
+        
         # 为下车地点添加NTA映射
         df['DONTA'] = df['DOLocationID'].map(NTA_MAPPING)
         
         # 统计NTA映射情况
+        punta_mapped = df['PUNTA'].notna().sum()
         donta_mapped = df['DONTA'].notna().sum()
         total_trips = len(df)
         
-        print(f"  NTA映射统计: DONTA映射={donta_mapped:,} ({donta_mapped/total_trips:.1%})")
+        print(f"  NTA映射统计: PUNTA映射={punta_mapped:,} ({punta_mapped/total_trips:.1%}), "
+              f"DONTA映射={donta_mapped:,} ({donta_mapped/total_trips:.1%})")
         
         return df
     
-    def aggregate_by_hour_nta(self, df):
+    def aggregate_by_hour_nta_zone(self, df):
         """
-        按小时+NTA到达区域聚合数据
+        按小时+NTA区域聚合数据（包含inflow和outflow特征）
         
         参数:
             df: 处理后的数据框
             
         返回:
-            DataFrame: 按小时+NTA聚合的数据框
+            DataFrame: 按小时+NTA区域聚合的数据框
         """
         if df is None or len(df) == 0:
             return None
         
-        # 按小时和NTA区域分组
-        grouped = df.groupby(['pickup_hour', 'DONTA'])
+        # 获取所有唯一的NTA区域（包括出发和到达）
+        all_ntas = set(df['PUNTA'].dropna().unique()) | set(df['DONTA'].dropna().unique())
         
-        # 计算聚合统计
-        aggregated = pd.DataFrame({
-            # 时间特征（取每组的第一个值，因为同一组内这些值相同）
-            'pickup_hour': grouped['pickup_hour'].first(),
-            'DONTA': grouped['DONTA'].first(),
-            'year': grouped['year'].first(),
-            'month': grouped['month'].first(),
-            'day': grouped['day'].first(),
-            'day_of_week': grouped['day_of_week'].first(),
-            'hour_of_day': grouped['hour_of_day'].first(),
-            
-            # 状态标签（取每组的第一个值）
-            'policy_status': grouped['policy_status'].first(),
-            'weekend_status': grouped['weekend_status'].first(),
-            'holiday': grouped['holiday'].first(),
-            
-            # 天气特征（取每组的第一个值，因为同一天内天气相同）
-            'is_rain': grouped['is_rain'].first(),
-            'is_snow': grouped['is_snow'].first(),
-            'temperature': grouped['temperature'].first(),
-            
-            # 聚合特征
-            'total_trips': grouped.size(),
-            'total_distance': grouped['trip_distance'].sum(),
-            'total_passengers': grouped['passenger_count'].sum(),
-            'total_duration': grouped['trip_duration_min'].sum(),
-            
-            # 平均值特征
-            # avg_speed: 使用总距离/总时间计算，更准确
-            'avg_tip_rate': grouped['tip_rate'].mean(),
-            'avg_fare': grouped['fare_amount'].mean(),
+        # 获取所有唯一的小时（包括pickup和dropoff小时）
+        all_hours = sorted(set(df['hour_index'].unique()) | set(df['dropoff_hour'].unique()))
+        
+        # 创建所有hour+NTA的组合
+        hour_nta_combinations = []
+        for hour in all_hours:
+            for nta in all_ntas:
+                hour_nta_combinations.append({
+                    'hour_index': hour,
+                    'NTA_zone': nta
+                })
+        
+        # 创建基础框架
+        base_df = pd.DataFrame(hour_nta_combinations)
+        
+        # 提取时间特征
+        base_df['year'] = base_df['hour_index'].dt.year
+        base_df['month'] = base_df['hour_index'].dt.month
+        base_df['day'] = base_df['hour_index'].dt.day
+        base_df['day_of_week'] = base_df['hour_index'].dt.dayofweek
+        base_df['hour_of_day'] = base_df['hour_index'].dt.hour
+        
+        # 添加政策状态标签
+        base_df['policy_status'] = base_df['hour_index'].apply(
+            lambda x: 'pre-policy' if x < POLICY_DATE else 'post-policy'
+        )
+        
+        # 添加周末状态标签
+        base_df['weekend_status'] = base_df['day_of_week'].apply(
+            lambda x: 'weekend' if x >= 5 else 'weekday'
+        )
+        
+        # 添加节假日标签
+        base_df['date_str'] = base_df['hour_index'].dt.strftime('%Y-%m-%d')
+        base_df['is_holiday_date'] = base_df['date_str'].isin(HOLIDAYS)
+        base_df['holiday'] = base_df['is_holiday_date'] | (base_df['day_of_week'] >= 5)
+        base_df = base_df.drop(columns=['date_str', 'is_holiday_date'])
+        
+        # 计算outflow特征（从该NTA出发的行程）
+        outflow_df = df[df['PUNTA'].notna()].copy()
+        outflow_grouped = outflow_df.groupby(['hour_index', 'PUNTA'])
+        
+        outflow_stats = pd.DataFrame({
+            'outflow_trips': outflow_grouped.size(),
+            'outflow_total_distance': outflow_grouped['trip_distance'].sum(),
+            'outflow_total_passengers': outflow_grouped['passenger_count'].sum(),
+            'outflow_total_duration': outflow_grouped['trip_duration_min'].sum(),
         })
         
-        # 计算平均速度：总距离（英里）/ 总时间（小时）
-        aggregated['avg_speed'] = aggregated['total_distance'] / (aggregated['total_duration'] / 60)
-        aggregated['avg_speed'] = aggregated['avg_speed'].replace([np.inf, -np.inf], np.nan)
+        # 计算outflow平均速度：总距离/总时间
+        outflow_stats['outflow_avg_speed'] = (
+            outflow_stats['outflow_total_distance'] / 
+            (outflow_stats['outflow_total_duration'] / 60)
+        )
+        outflow_stats['outflow_avg_speed'] = outflow_stats['outflow_avg_speed'].replace(
+            [np.inf, -np.inf], np.nan
+        )
         
-        # 重置索引，使pickup_hour和DONTA成为普通列
-        aggregated = aggregated.reset_index(drop=True)
+        outflow_stats = outflow_stats.reset_index()
+        outflow_stats = outflow_stats.rename(columns={'PUNTA': 'NTA_zone'})
         
-        return aggregated
+        # 计算inflow特征（到达该NTA的行程，基于dropoff_hour）
+        inflow_df = df[df['DONTA'].notna()].copy()
+        inflow_grouped = inflow_df.groupby(['dropoff_hour', 'DONTA'])
+        
+        inflow_stats = pd.DataFrame({
+            'inflow_trips': inflow_grouped.size(),
+            'inflow_total_distance': inflow_grouped['trip_distance'].sum(),
+            'inflow_total_passengers': inflow_grouped['passenger_count'].sum(),
+            'inflow_total_duration': inflow_grouped['trip_duration_min'].sum(),
+        })
+        
+        # 计算inflow平均速度：总距离/总时间
+        inflow_stats['inflow_avg_speed'] = (
+            inflow_stats['inflow_total_distance'] / 
+            (inflow_stats['inflow_total_duration'] / 60)
+        )
+        inflow_stats['inflow_avg_speed'] = inflow_stats['inflow_avg_speed'].replace(
+            [np.inf, -np.inf], np.nan
+        )
+        
+        inflow_stats = inflow_stats.reset_index()
+        inflow_stats = inflow_stats.rename(columns={'DONTA': 'NTA_zone', 'dropoff_hour': 'hour_index'})
+        
+        # 合并outflow和inflow数据到基础框架
+        base_df = base_df.merge(
+            outflow_stats,
+            on=['hour_index', 'NTA_zone'],
+            how='left'
+        )
+        
+        base_df = base_df.merge(
+            inflow_stats,
+            on=['hour_index', 'NTA_zone'],
+            how='left'
+        )
+        
+        # 填充缺失值为0（表示该小时该区域没有outflow或inflow）
+        outflow_cols = ['outflow_trips', 'outflow_total_distance', 'outflow_total_passengers',
+                       'outflow_total_duration', 'outflow_avg_speed']
+        inflow_cols = ['inflow_trips', 'inflow_total_distance', 'inflow_total_passengers',
+                      'inflow_total_duration', 'inflow_avg_speed']
+        
+        for col in outflow_cols + inflow_cols:
+            if col in base_df.columns:
+                base_df[col] = base_df[col].fillna(0)
+        
+        # 排序数据
+        base_df = base_df.sort_values(['hour_index', 'NTA_zone']).reset_index(drop=True)
+        
+        # 合并天气数据
+        base_df = self._add_weather_features(base_df)
+        
+        # 重新排列列的顺序
+        column_order = [
+            'hour_index', 'NTA_zone',
+            'year', 'month', 'day', 'day_of_week', 'hour_of_day',
+            'policy_status', 'weekend_status', 'holiday',
+            'weather_temperature', 'weather_precipitation', 'weather_windspeed', 'weather_humidity',
+            'outflow_trips', 'outflow_total_distance', 'outflow_total_passengers',
+            'outflow_total_duration', 'outflow_avg_speed',
+            'inflow_trips', 'inflow_total_distance', 'inflow_total_passengers',
+            'inflow_total_duration', 'inflow_avg_speed'
+        ]
+        
+        # 只保留存在的列
+        existing_columns = [col for col in column_order if col in base_df.columns]
+        base_df = base_df[existing_columns]
+        
+        return base_df
+    
+    def _add_weather_features(self, df):
+        """
+        添加NTA级别的天气特征到聚合数据
+        
+        参数:
+            df: 聚合后的数据框
+            
+        返回:
+            DataFrame: 添加了天气特征的数据框
+        """
+        if self.weather_data is None:
+            print("  ⚠ NTA天气数据不可用，跳过天气特征")
+            # 添加默认值
+            df['weather_temperature'] = np.nan
+            df['weather_precipitation'] = 0
+            df['weather_windspeed'] = np.nan
+            df['weather_humidity'] = np.nan
+            return df
+        
+        # 合并天气数据（按hour_index和NTA_zone匹配）
+        df = df.merge(
+            self.weather_data,
+            on=['hour_index', 'NTA_zone'],
+            how='left'
+        )
+        
+        # 处理缺失值
+        df['weather_precipitation'] = df['weather_precipitation'].fillna(0)
+        # 其他天气特征保持为NaN（不填充，因为缺失值可能表示数据缺失）
+        
+        # 统计天气数据匹配情况
+        total_records = len(df)
+        temp_matched = df['weather_temperature'].notna().sum()
+        wind_matched = df['weather_windspeed'].notna().sum()
+        humidity_matched = df['weather_humidity'].notna().sum()
+        
+        print(f"  天气数据匹配: 温度={temp_matched:,} ({temp_matched/total_records:.1%}), "
+              f"风速={wind_matched:,} ({wind_matched/total_records:.1%}), "
+              f"湿度={humidity_matched:,} ({humidity_matched/total_records:.1%})")
+        
+        return df
     
     def load_and_merge_monthly_data(self, year_month):
         """
@@ -539,13 +618,13 @@ class NTAHourlyTaxiDataProcessorDropoff:
             df = self.feature_engineering(df)
             print(f"  特征工程后: {len(df):,} 条记录")
             
-            # 5. 按小时+NTA聚合
-            print("步骤 5/6: 按小时+NTA到达区域聚合...")
-            aggregated_data = self.aggregate_by_hour_nta(df)
+            # 5. 按小时+NTA区域聚合（包含inflow和outflow）
+            print("步骤 5/6: 按小时+NTA区域聚合（inflow/outflow）...")
+            aggregated_data = self.aggregate_by_hour_nta_zone(df)
             
             if aggregated_data is not None:
                 print(f"  ✓ 生成了 {len(aggregated_data)} 条聚合记录")
-                print(f"  NTA区域数: {aggregated_data['DONTA'].nunique()}")
+                print(f"  NTA区域数: {aggregated_data['NTA_zone'].nunique()}")
                 return aggregated_data
             else:
                 print("  ⚠ 未生成聚合数据")
@@ -562,7 +641,7 @@ class NTAHourlyTaxiDataProcessorDropoff:
         处理data目录下的所有parquet文件（Yellow & Green Taxi）
         """
         print("\n" + "="*80)
-        print("NYC出租车数据按小时+NTA到达区域聚合处理 (Yellow & Green Taxi合并)")
+        print("NYC出租车数据按小时+NTA区域聚合处理 (区域视角，包含inflow/outflow)")
         print("="*80)
         
         # 获取所有yellow和green出租车数据文件
@@ -608,7 +687,7 @@ class NTAHourlyTaxiDataProcessorDropoff:
         print(f"✅ 处理完成！成功处理 {len(self.aggregated_stats)} 个月份的数据")
         print("="*80)
     
-    def save_results(self, output_file='nta_hourly_taxi_summary_dropoff.csv'):
+    def save_results(self, output_file='nta_zone_hourly_taxi_summary.csv'):
         """
         保存所有月份的聚合数据
         
@@ -625,7 +704,7 @@ class NTAHourlyTaxiDataProcessorDropoff:
         all_aggregated_data = pd.concat(self.aggregated_stats, ignore_index=True)
         
         # 按时间排序
-        all_aggregated_data = all_aggregated_data.sort_values(['pickup_hour', 'DONTA']).reset_index(drop=True)
+        all_aggregated_data = all_aggregated_data.sort_values(['hour_index', 'NTA_zone']).reset_index(drop=True)
         
         # 保存为CSV
         output_path = os.path.join(self.data_dir, output_file)
@@ -633,8 +712,8 @@ class NTAHourlyTaxiDataProcessorDropoff:
         
         print(f"\n✓ 聚合数据已保存到: {output_path}")
         print(f"  总记录数: {len(all_aggregated_data):,} 行")
-        print(f"  时间范围: {all_aggregated_data['pickup_hour'].min()} 至 {all_aggregated_data['pickup_hour'].max()}")
-        print(f"  NTA区域数: {all_aggregated_data['DONTA'].nunique()}")
+        print(f"  时间范围: {all_aggregated_data['hour_index'].min()} 至 {all_aggregated_data['hour_index'].max()}")
+        print(f"  NTA区域数: {all_aggregated_data['NTA_zone'].nunique()}")
         print(f"  文件大小: {os.path.getsize(output_path) / 1024 / 1024:.2f} MB")
         
         # 显示数据预览
@@ -646,32 +725,42 @@ class NTAHourlyTaxiDataProcessorDropoff:
         print("数据统计摘要")
         print("="*80)
         print(f"总记录数: {len(all_aggregated_data):,}")
-        print(f"总行程数: {all_aggregated_data['total_trips'].sum():,.0f}")
-        print(f"总距离: {all_aggregated_data['total_distance'].sum():,.2f} 英里")
-        print(f"总乘客数: {all_aggregated_data['total_passengers'].sum():,.0f}")
-        print(f"平均每小时每NTA行程数: {all_aggregated_data['total_trips'].mean():.2f}")
-        print(f"平均行程距离: {all_aggregated_data['total_distance'].sum() / all_aggregated_data['total_trips'].sum():.2f} 英里")
-        print(f"平均速度: {all_aggregated_data['avg_speed'].mean():.2f} mph")
-        print(f"平均小费率: {all_aggregated_data['avg_tip_rate'].mean():.2%}")
-        print(f"平均费用: {all_aggregated_data['avg_fare'].mean():.2f} 美元")
+        print(f"总outflow行程数: {all_aggregated_data['outflow_trips'].sum():,.0f}")
+        print(f"总inflow行程数: {all_aggregated_data['inflow_trips'].sum():,.0f}")
+        print(f"总outflow距离: {all_aggregated_data['outflow_total_distance'].sum():,.2f} 英里")
+        print(f"总inflow距离: {all_aggregated_data['inflow_total_distance'].sum():,.2f} 英里")
+        print(f"平均每小时每NTA outflow行程数: {all_aggregated_data['outflow_trips'].mean():.2f}")
+        print(f"平均每小时每NTA inflow行程数: {all_aggregated_data['inflow_trips'].mean():.2f}")
+        print(f"平均outflow速度: {all_aggregated_data['outflow_avg_speed'].mean():.2f} mph")
+        print(f"平均inflow速度: {all_aggregated_data['inflow_avg_speed'].mean():.2f} mph")
         print(f"\n状态标签分布:")
         print(f"  政策前期比例: {(all_aggregated_data['policy_status'] == 'pre-policy').mean():.2%}")
         print(f"  政策后期比例: {(all_aggregated_data['policy_status'] == 'post-policy').mean():.2%}")
         print(f"  工作日比例: {(all_aggregated_data['weekend_status'] == 'weekday').mean():.2%}")
         print(f"  周末比例: {(all_aggregated_data['weekend_status'] == 'weekend').mean():.2%}")
         print(f"  节假日比例: {all_aggregated_data['holiday'].mean():.2%}")
-        print(f"\n天气特征分布:")
-        print(f"  雨天比例: {all_aggregated_data['is_rain'].mean():.2%}")
-        print(f"  雪天比例: {all_aggregated_data['is_snow'].mean():.2%}")
-        temp_data = all_aggregated_data['temperature'].dropna()
+        print(f"\n天气特征统计:")
+        temp_data = all_aggregated_data['weather_temperature'].dropna()
         if len(temp_data) > 0:
             print(f"  平均温度: {temp_data.mean():.1f}°F")
             print(f"  温度范围: {temp_data.min():.1f}°F 至 {temp_data.max():.1f}°F")
             print(f"  有温度数据比例: {len(temp_data) / len(all_aggregated_data):.2%}")
+        wind_data = all_aggregated_data['weather_windspeed'].dropna()
+        if len(wind_data) > 0:
+            print(f"  平均风速: {wind_data.mean():.1f} mph")
+            print(f"  有风速数据比例: {len(wind_data) / len(all_aggregated_data):.2%}")
+        humidity_data = all_aggregated_data['weather_humidity'].dropna()
+        if len(humidity_data) > 0:
+            print(f"  平均湿度: {humidity_data.mean():.1f}%")
+            print(f"  有湿度数据比例: {len(humidity_data) / len(all_aggregated_data):.2%}")
         print(f"\nNTA区域统计:")
-        top_ntas = all_aggregated_data.groupby('DONTA')['total_trips'].sum().sort_values(ascending=False).head(10)
-        print("  前10个NTA区域（按总行程数）:")
-        for nta, trips in top_ntas.items():
+        top_ntas_outflow = all_aggregated_data.groupby('NTA_zone')['outflow_trips'].sum().sort_values(ascending=False).head(10)
+        print("  前10个NTA区域（按outflow行程数）:")
+        for nta, trips in top_ntas_outflow.items():
+            print(f"    {nta}: {trips:,.0f} 行程")
+        top_ntas_inflow = all_aggregated_data.groupby('NTA_zone')['inflow_trips'].sum().sort_values(ascending=False).head(10)
+        print("  前10个NTA区域（按inflow行程数）:")
+        for nta, trips in top_ntas_inflow.items():
             print(f"    {nta}: {trips:,.0f} 行程")
         print("="*80)
         
@@ -690,14 +779,14 @@ def main():
         return
     
     # 创建处理器实例
-    processor = NTAHourlyTaxiDataProcessorDropoff(data_dir)
+    processor = NTAZoneHourlyTaxiDataProcessor(data_dir)
     
     # 处理所有文件
     processor.process_all_files()
     
     # 保存结果
     if processor.aggregated_stats:
-        aggregated_df = processor.save_results('nta_hourly_taxi_summary_dropoff.csv')
+        aggregated_df = processor.save_results('nta_zone_hourly_taxi_summary.csv')
         print("\n✅ 所有任务完成！")
     else:
         print("\n⚠ 警告: 没有成功处理任何数据文件")
