@@ -10,3 +10,4 @@ data/nta_hourly_taxi_summary_dropoff.csv
 *.DS_Store
 
 data/archive/
+data/
