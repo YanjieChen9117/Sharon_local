@@ -7,7 +7,7 @@
 # 功能：
 # 1. 使用pre-policy (2024-01-06 到 2024-08-31) 和 post-policy (2025-01-06 到 2025-08-31) 数据
 # 2. Treatment group: CBD区域
-# 3. Control group: CBD neighbor区域
+# 3. Control group: 所有其他区域
 # 4. 分析政策对以下指标的影响：
 #    - outflow_trips (流出行程数)
 #    - inflow_trips (流入行程数)
@@ -18,13 +18,15 @@
 # Y = β₀ + β₁*Treatment + β₂*Post + β₃*(Treatment*Post) + β₄*Controls + ε
 #
 # 其中：
-# - Treatment: 1 if CBD区域, 0 if CBD neighbor区域
+# - Treatment: 1 if CBD区域, 0 if others
 # - Post: 1 if post-policy period, 0 if pre-policy period
 # - Treatment*Post: 交互项，捕捉政策效应
 #
 # 控制变量：
 # - day_of_week, hour_of_day, holiday
 # - weather_temperature, weather_precipitation, weather_windspeed, weather_humidity
+# - 对于outflow分析: outflow_total_tip, outflow_total_tolls, outflow_total_fare
+# - 对于inflow分析: inflow_total_tip, inflow_total_tolls, inflow_total_fare
 #
 # 作者: Yanjie Chen
 # 日期: 2025-11-17
@@ -62,19 +64,13 @@ df$day <- as.numeric(df$day)
 # 创建日期列（使用已有的year, month, day列）
 df$date <- as.Date(paste(df$year, df$month, df$day, sep = "-"))
 
-# 定义CBD区域和CBD neighbor区域
+# 定义CBD区域
 cbd_zones <- c("MN0191", "MN0101", "MN0102", "MN0301", "MN0201", "MN0302", 
                "MN0203", "MN0202", "MN0303", "MN0401", "MN0501", "MN0601", 
                "MN0602", "MN0603", "MN0402", "MN0502", "MN0604")
 
-cbd_neighbor_zones <- c("MN0701", "MN6491", "MN0802", "MN0801")
-
 # 创建区域类型变量
 df$is_cbd <- ifelse(df$NTA_zone %in% cbd_zones, 1, 0)
-df$is_cbd_neighbor <- ifelse(df$NTA_zone %in% cbd_neighbor_zones, 1, 0)
-
-# 筛选只包含CBD和CBD neighbor区域的数据
-df <- df %>% filter(is_cbd == 1 | is_cbd_neighbor == 1)
 
 # 定义时间范围
 pre_start <- as.Date("2024-01-06")
@@ -95,7 +91,7 @@ post_data <- df %>%
 # 合并数据
 did_data <- bind_rows(pre_data, post_data)
 
-# 创建treatment变量: 1 if CBD区域, 0 if CBD neighbor区域
+# 创建treatment变量: 1 if CBD区域, 0 if others
 did_data$treatment <- did_data$is_cbd
 
 # 创建交互项
@@ -119,12 +115,24 @@ did_data$weather_precipitation <- as.numeric(did_data$weather_precipitation)
 did_data$weather_windspeed <- as.numeric(did_data$weather_windspeed)
 did_data$weather_humidity <- as.numeric(did_data$weather_humidity)
 
+# 确保财务变量是数值型（用于控制变量）
+if ("outflow_total_tip" %in% names(did_data)) {
+  did_data$outflow_total_tip <- as.numeric(did_data$outflow_total_tip)
+  did_data$outflow_total_tolls <- as.numeric(did_data$outflow_total_tolls)
+  did_data$outflow_total_fare <- as.numeric(did_data$outflow_total_fare)
+}
+if ("inflow_total_tip" %in% names(did_data)) {
+  did_data$inflow_total_tip <- as.numeric(did_data$inflow_total_tip)
+  did_data$inflow_total_tolls <- as.numeric(did_data$inflow_total_tolls)
+  did_data$inflow_total_fare <- as.numeric(did_data$inflow_total_fare)
+}
+
 # 打印数据摘要
 cat("=== 数据摘要 ===\n")
 cat(sprintf("Pre-policy数据: %d 条记录\n", nrow(pre_data)))
 cat(sprintf("Post-policy数据: %d 条记录\n", nrow(post_data)))
 cat(sprintf("Treatment group (CBD): %d 条记录\n", sum(did_data$treatment == 1)))
-cat(sprintf("Control group (CBD neighbor): %d 条记录\n", sum(did_data$treatment == 0)))
+cat(sprintf("Control group (Others): %d 条记录\n", sum(did_data$treatment == 0)))
 cat("\n")
 
 # ============================================================================
@@ -141,6 +149,21 @@ run_did_analysis <- function(data, outcome_var, outcome_name) {
   
   cat(sprintf("\n=== DiD分析: %s ===\n", outcome_name))
   
+  # 根据outcome_var确定使用哪些财务控制变量
+  if (grepl("^outflow", outcome_var)) {
+    # outflow相关分析：使用outflow财务变量
+    financial_controls <- "outflow_total_tip + outflow_total_tolls + outflow_total_fare"
+    financial_vars <- c("outflow_total_tip", "outflow_total_tolls", "outflow_total_fare")
+  } else if (grepl("^inflow", outcome_var)) {
+    # inflow相关分析：使用inflow财务变量
+    financial_controls <- "inflow_total_tip + inflow_total_tolls + inflow_total_fare"
+    financial_vars <- c("inflow_total_tip", "inflow_total_tolls", "inflow_total_fare")
+  } else {
+    # 默认情况：不使用财务变量
+    financial_controls <- ""
+    financial_vars <- character(0)
+  }
+  
   # 移除缺失值
   analysis_data <- data %>%
     filter(!is.na(.data[[outcome_var]]),
@@ -154,15 +177,30 @@ run_did_analysis <- function(data, outcome_var, outcome_name) {
            !is.na(weather_windspeed),
            !is.na(weather_humidity))
   
+  # 添加财务变量的缺失值检查
+  for (var in financial_vars) {
+    if (var %in% names(analysis_data)) {
+      analysis_data <- analysis_data %>% filter(!is.na(.data[[var]]))
+    }
+  }
+  
   cat(sprintf("有效观测数: %d\n", nrow(analysis_data)))
   
   # 准备回归公式
-  # 控制变量：day_of_week, hour_of_day, holiday, temperature, precipitation, windspeed, humidity
+  # 基础控制变量：day_of_week, hour_of_day, holiday, temperature, precipitation, windspeed, humidity
+  base_controls <- "factor(day_of_week) + factor(hour_of_day) + holiday + 
+     weather_temperature + weather_precipitation + weather_windspeed + weather_humidity"
+  
+  # 如果有财务控制变量，添加到公式中
+  if (financial_controls != "") {
+    all_controls <- paste(base_controls, financial_controls, sep = " + ")
+  } else {
+    all_controls <- base_controls
+  }
+  
   formula_str <- sprintf(
-    "%s ~ treatment + post + treatment_post + 
-     factor(day_of_week) + factor(hour_of_day) + holiday + 
-     weather_temperature + weather_precipitation + weather_windspeed + weather_humidity",
-    outcome_var
+    "%s ~ treatment + post + treatment_post + %s",
+    outcome_var, all_controls
   )
   
   formula_obj <- as.formula(formula_str)

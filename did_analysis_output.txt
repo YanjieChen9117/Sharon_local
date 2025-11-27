@@ -25,185 +25,53 @@ The following objects are masked from 'package:base':
     as.Date, as.Date.numeric
 
 === 数据摘要 ===
-Pre-policy数据: 120666 条记录
-Post-policy数据: 120141 条记录
+Pre-policy数据: 235586 条记录
+Post-policy数据: 234561 条记录
 Treatment group (CBD): 194939 条记录
-Control group (CBD neighbor): 45868 条记录
+Control group (Others): 275208 条记录
 
 
 === 描述性统计 ===
 
 按组别和时间段的均值:
 # A tibble: 4 x 7
-  treatment  post     n outflow_trips_mean inflow_trips_mean
-      <dbl> <dbl> <int>              <dbl>             <dbl>
-1         0     0 22984               191.              189.
-2         0     1 22884               192.              192.
-3         1     0 97682               130.              123.
-4         1     1 97257               131.              123.
+  treatment  post      n outflow_trips_mean inflow_trips_mean
+      <dbl> <dbl>  <int>              <dbl>             <dbl>
+1         0     0 137904               77.4              84.2
+2         0     1 137304               77.4              84.7
+3         1     0  97682              130.              123. 
+4         1     1  97257              131.              123. 
 # i 2 more variables: outflow_avg_speed_mean <dbl>, inflow_avg_speed_mean <dbl>
 
 === 简单DiD估计（未控制其他变量）===
 
 outflow_trips:
   Treatment group - Pre: 129.9042, Post: 130.5969, Change: 0.6927
-  Control group - Pre: 191.2293, Post: 192.2890, Change: 1.0597
-  DiD估计: -0.3670
+  Control group - Pre: 77.4325, Post: 77.4332, Change: 0.0007
+  DiD估计: 0.6920
 
 inflow_trips:
   Treatment group - Pre: 122.9280, Post: 123.2316, Change: 0.3036
-  Control group - Pre: 189.4842, Post: 192.0092, Change: 2.5251
-  DiD估计: -2.2214
+  Control group - Pre: 84.2140, Post: 84.6533, Change: 0.4393
+  DiD估计: -0.1356
 
 outflow_avg_speed:
   Treatment group - Pre: 11.9977, Post: 11.9727, Change: -0.0250
-  Control group - Pre: 12.5756, Post: 12.3406, Change: -0.2350
-  DiD估计: 0.2100
+  Control group - Pre: 10.2014, Post: 10.0848, Change: -0.1165
+  DiD估计: 0.0916
 
 inflow_avg_speed:
   Treatment group - Pre: 12.5482, Post: 12.4971, Change: -0.0511
-  Control group - Pre: 12.5117, Post: 12.4595, Change: -0.0521
-  DiD估计: 0.0011
+  Control group - Pre: 13.3796, Post: 13.1562, Change: -0.2234
+  DiD估计: 0.1723
 
 === DiD分析: 流出行程数 (Outflow Trips) ===
-有效观测数: 240807
+有效观测数: 470147
 
-政策效应 (β₃): -0.4670
-标准误: 1.7289
-P值: 0.787074
-95% 置信区间: [-3.8557, 2.9217]
-显著性: 
-
-=== 回归模型摘要 ===
-
-Call:
-lm(formula = formula_obj, data = analysis_data)
-
-Residuals:
-    Min      1Q  Median      3Q     Max 
--275.36  -97.23  -34.39   34.75 1279.61 
-
-Coefficients:
-                        Estimate Std. Error t value Pr(>|t|)    
-(Intercept)           129.458266   2.929061  44.198  < 2e-16 ***
-treatment             -61.200401   1.215456 -50.352  < 2e-16 ***
-post                   -0.008454   1.565414  -0.005  0.99569    
-treatment_post         -0.467004   1.720734  -0.271  0.78609    
-factor(day_of_week)1   22.865591   1.285970  17.781  < 2e-16 ***
-factor(day_of_week)2   34.436070   1.277299  26.960  < 2e-16 ***
-factor(day_of_week)3   37.651007   1.277282  29.477  < 2e-16 ***
-factor(day_of_week)4   22.912605   1.281011  17.886  < 2e-16 ***
-factor(day_of_week)5   57.002067   2.355082  24.204  < 2e-16 ***
-factor(day_of_week)6   25.343018   2.357441  10.750  < 2e-16 ***
-factor(hour_of_day)1  -25.911197   2.317330 -11.181  < 2e-16 ***
-factor(hour_of_day)2  -44.845237   2.328785 -19.257  < 2e-16 ***
-factor(hour_of_day)3  -60.074781   2.327076 -25.816  < 2e-16 ***
-factor(hour_of_day)4  -71.866011   2.328299 -30.866  < 2e-16 ***
-factor(hour_of_day)5  -72.673217   2.328873 -31.205  < 2e-16 ***
-factor(hour_of_day)6  -51.372704   2.327182 -22.075  < 2e-16 ***
-factor(hour_of_day)7  -10.124703   2.325733  -4.353 1.34e-05 ***
-factor(hour_of_day)8   29.230385   2.330656  12.542  < 2e-16 ***
-factor(hour_of_day)9   51.995267   2.343333  22.189  < 2e-16 ***
-factor(hour_of_day)10  67.834835   2.360162  28.742  < 2e-16 ***
-factor(hour_of_day)11  86.110125   2.376631  36.232  < 2e-16 ***
-factor(hour_of_day)12 101.775964   2.390819  42.570  < 2e-16 ***
-factor(hour_of_day)13 110.749075   2.400231  46.141  < 2e-16 ***
-factor(hour_of_day)14 122.346586   2.405725  50.856  < 2e-16 ***
-factor(hour_of_day)15 128.932753   2.400714  53.706  < 2e-16 ***
-factor(hour_of_day)16 136.292455   2.387872  57.077  < 2e-16 ***
-factor(hour_of_day)17 158.819985   2.368703  67.049  < 2e-16 ***
-factor(hour_of_day)18 169.381316   2.348777  72.115  < 2e-16 ***
-factor(hour_of_day)19 135.867465   2.336670  58.146  < 2e-16 ***
-factor(hour_of_day)20 114.883024   2.331668  49.271  < 2e-16 ***
-factor(hour_of_day)21 119.180475   2.328605  51.181  < 2e-16 ***
-factor(hour_of_day)22  95.688682   2.326864  41.123  < 2e-16 ***
-factor(hour_of_day)23  42.521109   2.325879  18.282  < 2e-16 ***
-holiday               -31.659594   2.215017 -14.293  < 2e-16 ***
-weather_temperature    -0.512875   0.032928 -15.575  < 2e-16 ***
-weather_precipitation   1.366572   0.442024   3.092  0.00199 ** 
-weather_windspeed      -0.288156   0.060374  -4.773 1.82e-06 ***
-weather_humidity       -0.026805   0.022265  -1.204  0.22862    
----
-Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
-
-Residual standard error: 165.8 on 240769 degrees of freedom
-Multiple R-squared:  0.1957,	Adjusted R-squared:  0.1956 
-F-statistic:  1584 on 37 and 240769 DF,  p-value: < 2.2e-16
-
-
-=== DiD分析: 流入行程数 (Inflow Trips) ===
-有效观测数: 240807
-
-政策效应 (β₃): -2.2979
-标准误: 1.6294
-P值: 0.158460
-95% 置信区间: [-5.4916, 0.8957]
-显著性: 
-
-=== 回归模型摘要 ===
-
-Call:
-lm(formula = formula_obj, data = analysis_data)
-
-Residuals:
-    Min      1Q  Median      3Q     Max 
--280.74  -81.92  -25.45   37.69  950.19 
-
-Coefficients:
-                       Estimate Std. Error t value Pr(>|t|)    
-(Intercept)           131.45806    2.46675  53.292  < 2e-16 ***
-treatment             -66.45831    1.02361 -64.925  < 2e-16 ***
-post                    1.71769    1.31833   1.303  0.19260    
-treatment_post         -2.29794    1.44914  -1.586  0.11280    
-factor(day_of_week)1   19.31799    1.08300  17.838  < 2e-16 ***
-factor(day_of_week)2   28.81547    1.07569  26.788  < 2e-16 ***
-factor(day_of_week)3   31.56891    1.07568  29.348  < 2e-16 ***
-factor(day_of_week)4   18.34328    1.07882  17.003  < 2e-16 ***
-factor(day_of_week)5   48.68909    1.98336  24.549  < 2e-16 ***
-factor(day_of_week)6   20.71895    1.98535  10.436  < 2e-16 ***
-factor(hour_of_day)1  -27.51605    1.95157 -14.099  < 2e-16 ***
-factor(hour_of_day)2  -46.25834    1.96122 -23.587  < 2e-16 ***
-factor(hour_of_day)3  -61.31474    1.95978 -31.287  < 2e-16 ***
-factor(hour_of_day)4  -71.64320    1.96081 -36.538  < 2e-16 ***
-factor(hour_of_day)5  -72.89914    1.96129 -37.169  < 2e-16 ***
-factor(hour_of_day)6  -51.17920    1.95987 -26.114  < 2e-16 ***
-factor(hour_of_day)7  -10.06024    1.95865  -5.136 2.80e-07 ***
-factor(hour_of_day)8   31.67711    1.96279  16.139  < 2e-16 ***
-factor(hour_of_day)9   59.00063    1.97347  29.897  < 2e-16 ***
-factor(hour_of_day)10  74.07555    1.98764  37.268  < 2e-16 ***
-factor(hour_of_day)11  85.07355    2.00151  42.505  < 2e-16 ***
-factor(hour_of_day)12 102.78872    2.01346  51.051  < 2e-16 ***
-factor(hour_of_day)13 109.38973    2.02139  54.116  < 2e-16 ***
-factor(hour_of_day)14 115.95803    2.02601  57.235  < 2e-16 ***
-factor(hour_of_day)15 124.63196    2.02179  61.644  < 2e-16 ***
-factor(hour_of_day)16 128.00382    2.01098  63.653  < 2e-16 ***
-factor(hour_of_day)17 148.66280    1.99484  74.524  < 2e-16 ***
-factor(hour_of_day)18 167.86911    1.97805  84.866  < 2e-16 ***
-factor(hour_of_day)19 138.55799    1.96786  70.411  < 2e-16 ***
-factor(hour_of_day)20 104.14133    1.96365  53.035  < 2e-16 ***
-factor(hour_of_day)21  99.75769    1.96107  50.869  < 2e-16 ***
-factor(hour_of_day)22  83.07750    1.95960  42.395  < 2e-16 ***
-factor(hour_of_day)23  40.81199    1.95877  20.836  < 2e-16 ***
-holiday               -30.18226    1.86541 -16.180  < 2e-16 ***
-weather_temperature    -0.41483    0.02773 -14.959  < 2e-16 ***
-weather_precipitation   1.18077    0.37226   3.172  0.00151 ** 
-weather_windspeed      -0.22679    0.05084  -4.460 8.18e-06 ***
-weather_humidity       -0.01341    0.01875  -0.715  0.47449    
----
-Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
-
-Residual standard error: 139.6 on 240769 degrees of freedom
-Multiple R-squared:  0.2485,	Adjusted R-squared:  0.2484 
-F-statistic:  2152 on 37 and 240769 DF,  p-value: < 2.2e-16
-
-
-=== DiD分析: 流出平均速度 (Outflow Average Speed) ===
-有效观测数: 240807
-
-政策效应 (β₃): 0.2059
-标准误: 0.0398
-P值: 0.000000
-95% 置信区间: [0.1278, 0.2840]
+政策效应 (β₃): -0.3956
+标准误: 0.1122
+P值: 0.000424
+95% 置信区间: [-0.6156, -0.1756]
 显著性: ***
 
 === 回归模型摘要 ===
@@ -213,64 +81,67 @@ lm(formula = formula_obj, data = analysis_data)
 
 Residuals:
     Min      1Q  Median      3Q     Max 
--21.110  -1.441  -0.048   1.742  84.048 
+-469.47   -6.82   -1.28    6.00  150.45 
 
 Coefficients:
-                        Estimate Std. Error t value Pr(>|t|)    
-(Intercept)           13.8425526  0.0816023 169.634  < 2e-16 ***
-treatment             -0.5740629  0.0338621 -16.953  < 2e-16 ***
-post                  -0.2932934  0.0436117  -6.725 1.76e-11 ***
-treatment_post         0.2059042  0.0479389   4.295 1.75e-05 ***
-factor(day_of_week)1  -0.7820624  0.0358266 -21.829  < 2e-16 ***
-factor(day_of_week)2  -0.9011315  0.0355850 -25.323  < 2e-16 ***
-factor(day_of_week)3  -0.9446573  0.0355845 -26.547  < 2e-16 ***
-factor(day_of_week)4  -0.5611725  0.0356884 -15.724  < 2e-16 ***
-factor(day_of_week)5  -1.5507222  0.0656115 -23.635  < 2e-16 ***
-factor(day_of_week)6  -0.1590159  0.0656773  -2.421   0.0155 *  
-factor(hour_of_day)1   0.6904892  0.0645598  10.695  < 2e-16 ***
-factor(hour_of_day)2   1.0550737  0.0648789  16.262  < 2e-16 ***
-factor(hour_of_day)3   2.3567677  0.0648313  36.352  < 2e-16 ***
-factor(hour_of_day)4   5.7595228  0.0648654  88.792  < 2e-16 ***
-factor(hour_of_day)5   6.1884558  0.0648814  95.381  < 2e-16 ***
-factor(hour_of_day)6   3.8731731  0.0648343  59.740  < 2e-16 ***
-factor(hour_of_day)7   1.0094532  0.0647939  15.579  < 2e-16 ***
-factor(hour_of_day)8  -0.9654192  0.0649311 -14.868  < 2e-16 ***
-factor(hour_of_day)9  -1.9824643  0.0652842 -30.367  < 2e-16 ***
-factor(hour_of_day)10 -2.5223619  0.0657531 -38.361  < 2e-16 ***
-factor(hour_of_day)11 -2.8319228  0.0662119 -42.771  < 2e-16 ***
-factor(hour_of_day)12 -2.9174840  0.0666072 -43.801  < 2e-16 ***
-factor(hour_of_day)13 -2.8085889  0.0668694 -42.001  < 2e-16 ***
-factor(hour_of_day)14 -2.9660750  0.0670224 -44.255  < 2e-16 ***
-factor(hour_of_day)15 -3.2075987  0.0668828 -47.958  < 2e-16 ***
-factor(hour_of_day)16 -3.3198945  0.0665250 -49.904  < 2e-16 ***
-factor(hour_of_day)17 -3.3858571  0.0659910 -51.308  < 2e-16 ***
-factor(hour_of_day)18 -3.1120129  0.0654359 -47.558  < 2e-16 ***
-factor(hour_of_day)19 -2.4181331  0.0650986 -37.146  < 2e-16 ***
-factor(hour_of_day)20 -1.8675899  0.0649592 -28.750  < 2e-16 ***
-factor(hour_of_day)21 -1.5216375  0.0648739 -23.455  < 2e-16 ***
-factor(hour_of_day)22 -1.1214400  0.0648254 -17.299  < 2e-16 ***
-factor(hour_of_day)23 -0.4059312  0.0647980  -6.265 3.74e-10 ***
-holiday                1.5473105  0.0617094  25.074  < 2e-16 ***
-weather_temperature   -0.0002873  0.0009174  -0.313   0.7541    
-weather_precipitation -0.1045234  0.0123146  -8.488  < 2e-16 ***
-weather_windspeed     -0.0126603  0.0016820  -7.527 5.21e-14 ***
-weather_humidity      -0.0025176  0.0006203  -4.059 4.93e-05 ***
+                        Estimate Std. Error  t value Pr(>|t|)    
+(Intercept)            7.5847376  0.2149394   35.288  < 2e-16 ***
+treatment             -9.4528759  0.0769464 -122.850  < 2e-16 ***
+post                  -0.5366274  0.0705087   -7.611 2.73e-14 ***
+treatment_post        -0.3955894  0.1066273   -3.710 0.000207 ***
+factor(day_of_week)1  -3.9022055  0.0997850  -39.106  < 2e-16 ***
+factor(day_of_week)2  -5.4823476  0.0991683  -55.283  < 2e-16 ***
+factor(day_of_week)3  -6.3223254  0.0991545  -63.762  < 2e-16 ***
+factor(day_of_week)4  -1.5972497  0.0993245  -16.081  < 2e-16 ***
+factor(day_of_week)5  -4.3375351  0.1828983  -23.716  < 2e-16 ***
+factor(day_of_week)6  -2.6578714  0.1827744  -14.542  < 2e-16 ***
+factor(hour_of_day)1   0.6493512  0.1796323    3.615 0.000301 ***
+factor(hour_of_day)2   0.4368424  0.1805702    2.419 0.015553 *  
+factor(hour_of_day)3   0.3103697  0.1805256    1.719 0.085568 .  
+factor(hour_of_day)4   0.2823613  0.1808788    1.561 0.118512    
+factor(hour_of_day)5   1.7200989  0.1812643    9.489  < 2e-16 ***
+factor(hour_of_day)6   5.1084310  0.1810042   28.223  < 2e-16 ***
+factor(hour_of_day)7   8.0762915  0.1806215   44.714  < 2e-16 ***
+factor(hour_of_day)8   5.9176671  0.1808736   32.717  < 2e-16 ***
+factor(hour_of_day)9   5.0828726  0.1819018   27.943  < 2e-16 ***
+factor(hour_of_day)10  4.6966252  0.1834196   25.606  < 2e-16 ***
+factor(hour_of_day)11  2.9874793  0.1851007   16.140  < 2e-16 ***
+factor(hour_of_day)12  3.5156363  0.1864960   18.851  < 2e-16 ***
+factor(hour_of_day)13  3.6379528  0.1873829   19.415  < 2e-16 ***
+factor(hour_of_day)14  2.8870972  0.1880923   15.349  < 2e-16 ***
+factor(hour_of_day)15  2.8812788  0.1877168   15.349  < 2e-16 ***
+factor(hour_of_day)16 -3.1283977  0.1861136  -16.809  < 2e-16 ***
+factor(hour_of_day)17 -4.4352499  0.1850747  -23.965  < 2e-16 ***
+factor(hour_of_day)18  0.0743056  0.1839793    0.404 0.686301    
+factor(hour_of_day)19  2.7678620  0.1824278   15.172  < 2e-16 ***
+factor(hour_of_day)20  2.2110417  0.1814161   12.188  < 2e-16 ***
+factor(hour_of_day)21 -1.9164473  0.1812881  -10.571  < 2e-16 ***
+factor(hour_of_day)22 -3.6955040  0.1808038  -20.439  < 2e-16 ***
+factor(hour_of_day)23 -1.5539188  0.1803446   -8.616  < 2e-16 ***
+holiday                3.8108049  0.1717626   22.186  < 2e-16 ***
+weather_temperature   -0.1093433  0.0025748  -42.466  < 2e-16 ***
+weather_precipitation -0.0216843  0.0352235   -0.616 0.538146    
+weather_windspeed      0.0369961  0.0046701    7.922 2.34e-15 ***
+weather_humidity      -0.0012214  0.0017142   -0.713 0.476135    
+outflow_total_tip      0.1516987  0.0005480  276.839  < 2e-16 ***
+outflow_total_tolls   -0.4413827  0.0008656 -509.904  < 2e-16 ***
+outflow_total_fare     0.0415769  0.0001202  345.855  < 2e-16 ***
 ---
 Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 
-Residual standard error: 4.618 on 240769 degrees of freedom
-Multiple R-squared:  0.2805,	Adjusted R-squared:  0.2804 
-F-statistic:  2537 on 37 and 240769 DF,  p-value: < 2.2e-16
+Residual standard error: 17.95 on 470106 degrees of freedom
+Multiple R-squared:  0.9879,	Adjusted R-squared:  0.9879 
+F-statistic: 9.576e+05 on 40 and 470106 DF,  p-value: < 2.2e-16
 
 
-=== DiD分析: 流入平均速度 (Inflow Average Speed) ===
-有效观测数: 240807
+=== DiD分析: 流入行程数 (Inflow Trips) ===
+有效观测数: 470147
 
-政策效应 (β₃): 0.0014
-标准误: 0.0374
-P值: 0.970934
-95% 置信区间: [-0.0719, 0.0746]
-显著性: 
+政策效应 (β₃): -1.3669
+标准误: 0.1288
+P值: 0.000000
+95% 置信区间: [-1.6194, -1.1144]
+显著性: ***
 
 === 回归模型摘要 ===
 
@@ -279,54 +150,195 @@ lm(formula = formula_obj, data = analysis_data)
 
 Residuals:
     Min      1Q  Median      3Q     Max 
--19.458  -1.729  -0.137   1.698  53.979 
+-379.67   -7.56   -0.04    8.21  137.44 
 
 Coefficients:
                         Estimate Std. Error  t value Pr(>|t|)    
-(Intercept)           17.5083079  0.0749968  233.454  < 2e-16 ***
-treatment              0.0367166  0.0311210    1.180  0.23808    
-post                  -0.0641813  0.0400815   -1.601  0.10932    
-treatment_post         0.0013613  0.0440583    0.031  0.97535    
-factor(day_of_week)1  -1.4263159  0.0329265  -43.318  < 2e-16 ***
-factor(day_of_week)2  -2.1172196  0.0327045  -64.738  < 2e-16 ***
-factor(day_of_week)3  -2.2494554  0.0327040  -68.782  < 2e-16 ***
-factor(day_of_week)4  -2.0262133  0.0327995  -61.776  < 2e-16 ***
-factor(day_of_week)5  -3.2803128  0.0603004  -54.399  < 2e-16 ***
-factor(day_of_week)6  -1.4810847  0.0603608  -24.537  < 2e-16 ***
-factor(hour_of_day)1   0.3488691  0.0593338    5.880 4.11e-09 ***
-factor(hour_of_day)2  -1.1503266  0.0596271  -19.292  < 2e-16 ***
-factor(hour_of_day)3  -2.8617594  0.0595834  -48.029  < 2e-16 ***
-factor(hour_of_day)4  -2.9803058  0.0596147  -49.993  < 2e-16 ***
-factor(hour_of_day)5  -1.2017853  0.0596294  -20.154  < 2e-16 ***
-factor(hour_of_day)6  -0.3875318  0.0595861   -6.504 7.85e-11 ***
-factor(hour_of_day)7  -1.5975405  0.0595490  -26.827  < 2e-16 ***
-factor(hour_of_day)8  -3.4465707  0.0596750  -57.756  < 2e-16 ***
-factor(hour_of_day)9  -4.6113239  0.0599996  -76.856  < 2e-16 ***
-factor(hour_of_day)10 -5.2614820  0.0604305  -87.067  < 2e-16 ***
-factor(hour_of_day)11 -5.8933430  0.0608522  -96.847  < 2e-16 ***
-factor(hour_of_day)12 -6.0754138  0.0612155  -99.246  < 2e-16 ***
-factor(hour_of_day)13 -5.9886217  0.0614565  -97.445  < 2e-16 ***
-factor(hour_of_day)14 -5.9505395  0.0615971  -96.604  < 2e-16 ***
-factor(hour_of_day)15 -5.9903059  0.0614688  -97.453  < 2e-16 ***
-factor(hour_of_day)16 -6.0077028  0.0611400  -98.261  < 2e-16 ***
-factor(hour_of_day)17 -6.1248518  0.0606492 -100.988  < 2e-16 ***
-factor(hour_of_day)18 -5.9888174  0.0601390  -99.583  < 2e-16 ***
-factor(hour_of_day)19 -5.1143258  0.0598290  -85.482  < 2e-16 ***
-factor(hour_of_day)20 -4.0204332  0.0597009  -67.343  < 2e-16 ***
-factor(hour_of_day)21 -3.6553874  0.0596225  -61.309  < 2e-16 ***
-factor(hour_of_day)22 -3.3312757  0.0595779  -55.915  < 2e-16 ***
-factor(hour_of_day)23 -1.9457653  0.0595527  -32.673  < 2e-16 ***
-holiday                1.5223895  0.0567142   26.843  < 2e-16 ***
-weather_temperature    0.0023094  0.0008431    2.739  0.00616 ** 
-weather_precipitation -0.0920460  0.0113178   -8.133 4.21e-16 ***
-weather_windspeed     -0.0029945  0.0015458   -1.937  0.05273 .  
-weather_humidity       0.0009369  0.0005701    1.643  0.10028    
+(Intercept)            0.6947484  0.2461672    2.822  0.00477 ** 
+treatment             -5.6854406  0.0873632  -65.078  < 2e-16 ***
+post                  -1.4962856  0.0805693  -18.571  < 2e-16 ***
+treatment_post        -1.3668749  0.1217201  -11.230  < 2e-16 ***
+factor(day_of_week)1  -3.3056825  0.1142665  -28.930  < 2e-16 ***
+factor(day_of_week)2  -4.5048136  0.1137970  -39.586  < 2e-16 ***
+factor(day_of_week)3  -4.9645817  0.1137370  -43.650  < 2e-16 ***
+factor(day_of_week)4   0.0700367  0.1138319    0.615  0.53838    
+factor(day_of_week)5  -2.8219780  0.2097155  -13.456  < 2e-16 ***
+factor(day_of_week)6  -2.4992065  0.2089223  -11.962  < 2e-16 ***
+factor(hour_of_day)1   2.4609568  0.2055267   11.974  < 2e-16 ***
+factor(hour_of_day)2   4.5775806  0.2068864   22.126  < 2e-16 ***
+factor(hour_of_day)3   5.3492635  0.2068677   25.858  < 2e-16 ***
+factor(hour_of_day)4   5.3815486  0.2070018   25.998  < 2e-16 ***
+factor(hour_of_day)5   6.4264717  0.2069982   31.046  < 2e-16 ***
+factor(hour_of_day)6   9.5627654  0.2067518   46.252  < 2e-16 ***
+factor(hour_of_day)7  12.5495392  0.2066396   60.732  < 2e-16 ***
+factor(hour_of_day)8  11.6411875  0.2071639   56.193  < 2e-16 ***
+factor(hour_of_day)9  10.2818443  0.2084953   49.315  < 2e-16 ***
+factor(hour_of_day)10 10.2319200  0.2100090   48.721  < 2e-16 ***
+factor(hour_of_day)11  8.8018081  0.2119268   41.532  < 2e-16 ***
+factor(hour_of_day)12  8.0731822  0.2137576   37.768  < 2e-16 ***
+factor(hour_of_day)13  7.4960634  0.2145104   34.945  < 2e-16 ***
+factor(hour_of_day)14  6.9466568  0.2148085   32.339  < 2e-16 ***
+factor(hour_of_day)15  5.5644235  0.2145237   25.939  < 2e-16 ***
+factor(hour_of_day)16 -1.6252783  0.2127280   -7.640 2.17e-14 ***
+factor(hour_of_day)17 -7.2481617  0.2117395  -34.232  < 2e-16 ***
+factor(hour_of_day)18 -6.5772445  0.2107755  -31.205  < 2e-16 ***
+factor(hour_of_day)19 -2.3784066  0.2088233  -11.390  < 2e-16 ***
+factor(hour_of_day)20 -0.3854855  0.2074392   -1.858  0.06313 .  
+factor(hour_of_day)21 -2.6521888  0.2072513  -12.797  < 2e-16 ***
+factor(hour_of_day)22 -5.1611730  0.2068807  -24.948  < 2e-16 ***
+factor(hour_of_day)23 -2.9349963  0.2061428  -14.238  < 2e-16 ***
+holiday                4.3335193  0.1963099   22.075  < 2e-16 ***
+weather_temperature   -0.1101638  0.0029438  -37.423  < 2e-16 ***
+weather_precipitation -0.0538550  0.0402530   -1.338  0.18093    
+weather_windspeed      0.0441324  0.0053363    8.270  < 2e-16 ***
+weather_humidity      -0.0064352  0.0019586   -3.286  0.00102 ** 
+inflow_total_tip       0.2185632  0.0005873  372.158  < 2e-16 ***
+inflow_total_tolls    -0.4373786  0.0008695 -503.024  < 2e-16 ***
+inflow_total_fare      0.0294486  0.0001312  224.527  < 2e-16 ***
 ---
 Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 
-Residual standard error: 4.244 on 240769 degrees of freedom
-Multiple R-squared:  0.2366,	Adjusted R-squared:  0.2364 
-F-statistic:  2016 on 37 and 240769 DF,  p-value: < 2.2e-16
+Residual standard error: 20.51 on 470106 degrees of freedom
+Multiple R-squared:  0.9809,	Adjusted R-squared:  0.9809 
+F-statistic: 6.041e+05 on 40 and 470106 DF,  p-value: < 2.2e-16
+
+
+=== DiD分析: 流出平均速度 (Outflow Average Speed) ===
+有效观测数: 470147
+
+政策效应 (β₃): 0.1109
+标准误: 0.0342
+P值: 0.001178
+95% 置信区间: [0.0439, 0.1780]
+显著性: ***
+
+=== 回归模型摘要 ===
+
+Call:
+lm(formula = formula_obj, data = analysis_data)
+
+Residuals:
+    Min      1Q  Median      3Q     Max 
+-18.319  -1.895   0.836   2.984  91.111 
+
+Coefficients:
+                        Estimate Std. Error t value Pr(>|t|)    
+(Intercept)            1.120e+01  7.301e-02 153.353  < 2e-16 ***
+treatment              1.556e+00  2.614e-02  59.530  < 2e-16 ***
+post                  -1.555e-01  2.395e-02  -6.494 8.36e-11 ***
+treatment_post         1.109e-01  3.622e-02   3.063  0.00219 ** 
+factor(day_of_week)1  -5.657e-01  3.389e-02 -16.691  < 2e-16 ***
+factor(day_of_week)2  -6.093e-01  3.368e-02 -18.088  < 2e-16 ***
+factor(day_of_week)3  -6.591e-01  3.368e-02 -19.570  < 2e-16 ***
+factor(day_of_week)4  -3.067e-01  3.374e-02  -9.092  < 2e-16 ***
+factor(day_of_week)5  -7.803e-01  6.212e-02 -12.560  < 2e-16 ***
+factor(day_of_week)6   7.549e-02  6.208e-02   1.216  0.22399    
+factor(hour_of_day)1   1.130e-01  6.101e-02   1.851  0.06411 .  
+factor(hour_of_day)2  -1.368e-01  6.133e-02  -2.231  0.02568 *  
+factor(hour_of_day)3   4.248e-01  6.132e-02   6.928 4.28e-12 ***
+factor(hour_of_day)4   3.551e+00  6.144e-02  57.799  < 2e-16 ***
+factor(hour_of_day)5   4.338e+00  6.157e-02  70.459  < 2e-16 ***
+factor(hour_of_day)6   2.802e+00  6.148e-02  45.572  < 2e-16 ***
+factor(hour_of_day)7   6.231e-01  6.135e-02  10.157  < 2e-16 ***
+factor(hour_of_day)8  -8.623e-01  6.144e-02 -14.036  < 2e-16 ***
+factor(hour_of_day)9  -1.556e+00  6.178e-02 -25.183  < 2e-16 ***
+factor(hour_of_day)10 -1.943e+00  6.230e-02 -31.194  < 2e-16 ***
+factor(hour_of_day)11 -2.357e+00  6.287e-02 -37.495  < 2e-16 ***
+factor(hour_of_day)12 -2.410e+00  6.334e-02 -38.050  < 2e-16 ***
+factor(hour_of_day)13 -2.435e+00  6.365e-02 -38.255  < 2e-16 ***
+factor(hour_of_day)14 -2.504e+00  6.389e-02 -39.191  < 2e-16 ***
+factor(hour_of_day)15 -2.795e+00  6.376e-02 -43.840  < 2e-16 ***
+factor(hour_of_day)16 -2.899e+00  6.322e-02 -45.858  < 2e-16 ***
+factor(hour_of_day)17 -2.748e+00  6.286e-02 -43.717  < 2e-16 ***
+factor(hour_of_day)18 -2.325e+00  6.249e-02 -37.204  < 2e-16 ***
+factor(hour_of_day)19 -1.664e+00  6.196e-02 -26.849  < 2e-16 ***
+factor(hour_of_day)20 -1.185e+00  6.162e-02 -19.234  < 2e-16 ***
+factor(hour_of_day)21 -9.037e-01  6.158e-02 -14.677  < 2e-16 ***
+factor(hour_of_day)22 -6.252e-01  6.141e-02 -10.181  < 2e-16 ***
+factor(hour_of_day)23 -1.040e-01  6.126e-02  -1.697  0.08965 .  
+holiday                1.252e+00  5.834e-02  21.469  < 2e-16 ***
+weather_temperature    4.619e-03  8.746e-04   5.282 1.28e-07 ***
+weather_precipitation -7.764e-02  1.196e-02  -6.489 8.62e-11 ***
+weather_windspeed     -1.426e-02  1.586e-03  -8.991  < 2e-16 ***
+weather_humidity      -1.529e-03  5.822e-04  -2.626  0.00865 ** 
+outflow_total_tip      3.404e-04  1.861e-04   1.829  0.06738 .  
+outflow_total_tolls    1.518e-02  2.940e-04  51.635  < 2e-16 ***
+outflow_total_fare    -2.315e-04  4.083e-05  -5.671 1.42e-08 ***
+---
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+
+Residual standard error: 6.098 on 470106 degrees of freedom
+Multiple R-squared:  0.1279,	Adjusted R-squared:  0.1278 
+F-statistic:  1724 on 40 and 470106 DF,  p-value: < 2.2e-16
+
+
+=== DiD分析: 流入平均速度 (Inflow Average Speed) ===
+有效观测数: 470147
+
+政策效应 (β₃): 0.2149
+标准误: 0.0341
+P值: 0.000000
+95% 置信区间: [0.1481, 0.2816]
+显著性: ***
+
+=== 回归模型摘要 ===
+
+Call:
+lm(formula = formula_obj, data = analysis_data)
+
+Residuals:
+    Min      1Q  Median      3Q     Max 
+-19.690  -1.668   0.194   2.278  72.383 
+
+Coefficients:
+                        Estimate Std. Error t value Pr(>|t|)    
+(Intercept)            1.801e+01  7.476e-02 240.948  < 2e-16 ***
+treatment             -8.858e-01  2.653e-02 -33.386  < 2e-16 ***
+post                  -1.977e-01  2.447e-02  -8.080 6.50e-16 ***
+treatment_post         2.149e-01  3.697e-02   5.812 6.16e-09 ***
+factor(day_of_week)1  -9.654e-01  3.470e-02 -27.821  < 2e-16 ***
+factor(day_of_week)2  -1.435e+00  3.456e-02 -41.515  < 2e-16 ***
+factor(day_of_week)3  -1.544e+00  3.454e-02 -44.701  < 2e-16 ***
+factor(day_of_week)4  -1.388e+00  3.457e-02 -40.147  < 2e-16 ***
+factor(day_of_week)5  -1.960e+00  6.369e-02 -30.777  < 2e-16 ***
+factor(day_of_week)6  -7.924e-01  6.345e-02 -12.490  < 2e-16 ***
+factor(hour_of_day)1   2.791e-01  6.242e-02   4.471 7.77e-06 ***
+factor(hour_of_day)2  -9.562e-01  6.283e-02 -15.219  < 2e-16 ***
+factor(hour_of_day)3  -2.745e+00  6.282e-02 -43.693  < 2e-16 ***
+factor(hour_of_day)4  -2.783e+00  6.286e-02 -44.263  < 2e-16 ***
+factor(hour_of_day)5  -2.070e+00  6.286e-02 -32.932  < 2e-16 ***
+factor(hour_of_day)6  -1.330e+00  6.279e-02 -21.187  < 2e-16 ***
+factor(hour_of_day)7  -2.667e+00  6.275e-02 -42.505  < 2e-16 ***
+factor(hour_of_day)8  -4.071e+00  6.291e-02 -64.714  < 2e-16 ***
+factor(hour_of_day)9  -4.835e+00  6.332e-02 -76.362  < 2e-16 ***
+factor(hour_of_day)10 -5.226e+00  6.378e-02 -81.941  < 2e-16 ***
+factor(hour_of_day)11 -5.529e+00  6.436e-02 -85.901  < 2e-16 ***
+factor(hour_of_day)12 -5.608e+00  6.492e-02 -86.386  < 2e-16 ***
+factor(hour_of_day)13 -5.556e+00  6.514e-02 -85.291  < 2e-16 ***
+factor(hour_of_day)14 -5.724e+00  6.524e-02 -87.737  < 2e-16 ***
+factor(hour_of_day)15 -5.921e+00  6.515e-02 -90.883  < 2e-16 ***
+factor(hour_of_day)16 -5.888e+00  6.460e-02 -91.148  < 2e-16 ***
+factor(hour_of_day)17 -5.601e+00  6.430e-02 -87.097  < 2e-16 ***
+factor(hour_of_day)18 -4.979e+00  6.401e-02 -77.779  < 2e-16 ***
+factor(hour_of_day)19 -3.886e+00  6.342e-02 -61.279  < 2e-16 ***
+factor(hour_of_day)20 -3.004e+00  6.300e-02 -47.688  < 2e-16 ***
+factor(hour_of_day)21 -2.418e+00  6.294e-02 -38.411  < 2e-16 ***
+factor(hour_of_day)22 -2.170e+00  6.283e-02 -34.537  < 2e-16 ***
+factor(hour_of_day)23 -1.409e+00  6.260e-02 -22.506  < 2e-16 ***
+holiday                1.385e+00  5.962e-02  23.240  < 2e-16 ***
+weather_temperature   -2.012e-03  8.940e-04  -2.250   0.0244 *  
+weather_precipitation -7.351e-02  1.222e-02  -6.014 1.81e-09 ***
+weather_windspeed     -4.086e-03  1.621e-03  -2.521   0.0117 *  
+weather_humidity       6.494e-04  5.948e-04   1.092   0.2749    
+inflow_total_tip      -2.482e-03  1.783e-04 -13.918  < 2e-16 ***
+inflow_total_tolls     2.242e-02  2.641e-04  84.889  < 2e-16 ***
+inflow_total_fare     -2.368e-04  3.983e-05  -5.945 2.77e-09 ***
+---
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+
+Residual standard error: 6.23 on 470106 degrees of freedom
+Multiple R-squared:  0.1443,	Adjusted R-squared:  0.1442 
+F-statistic:  1982 on 40 and 470106 DF,  p-value: < 2.2e-16
 
 
 
@@ -338,15 +350,15 @@ F-statistic:  2016 on 37 and 240769 DF,  p-value: < 2.2e-16
 3 \346\265\201\345\207\272\345\271\263\345\235\207\351\200\237\345\272\246 (Outflow Average Speed)
 4  \346\265\201\345\205\245\345\271\263\345\235\207\351\200\237\345\272\246 (Inflow Average Speed)
   Treatment_Effect  Std_Error      P_Value    CI_Lower   CI_Upper Significance
-1      -0.46700364 1.72892598 7.870743e-01 -3.85569856 2.92169129             
-2      -2.29794319 1.62942884 1.584597e-01 -5.49162372 0.89573733             
-3       0.20590423 0.03984350 2.370220e-07  0.12781097 0.28399748          ***
-4       0.00136129 0.03736036 9.709341e-01 -0.07186501 0.07458759             
+1       -0.3955894 0.11223267 4.239613e-04 -0.61556546 -0.1756134          ***
+2       -1.3668749 0.12882825 2.694305e-26 -1.61937824 -1.1143715          ***
+3        0.1109484 0.03419868 1.177762e-03  0.04391902  0.1779779          ***
+4        0.2148577 0.03405232 2.799442e-10  0.14811511  0.2816002          ***
    N_Obs
-1 240807
-2 240807
-3 240807
-4 240807
+1 470147
+2 470147
+3 470147
+4 470147
 
 显著性标记: *** p<0.01, ** p<0.05, * p<0.1
 

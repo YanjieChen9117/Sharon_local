@@ -1,0 +1,25 @@
+{
+  // Python 相关设置
+  "python.defaultInterpreterPath": "python3",
+  "python.terminal.activateEnvironment": true,
+  
+  // 编辑器设置 - 确保显示运行按钮
+  "editor.codeActionsOnSave": {
+    "source.organizeImports": "explicit"
+  },
+  
+  // 文件关联
+  "files.associations": {
+    "*.py": "python"
+  },
+  
+  // 终端设置
+  "terminal.integrated.defaultProfile.osx": "zsh",
+  
+  // 确保 Python 文件有运行按钮
+  "code-runner.runInTerminal": true,
+  "code-runner.executorMap": {
+    "python": "python3 -u"
+  }
+}
+

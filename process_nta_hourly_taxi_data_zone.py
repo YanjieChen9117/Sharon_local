@@ -413,6 +413,9 @@ class NTAZoneHourlyTaxiDataProcessor:
             'outflow_total_distance': outflow_grouped['trip_distance'].sum(),
             'outflow_total_passengers': outflow_grouped['passenger_count'].sum(),
             'outflow_total_duration': outflow_grouped['trip_duration_min'].sum(),
+            'outflow_total_tip': outflow_grouped['tip_amount'].sum(),
+            'outflow_total_tolls': outflow_grouped['tolls_amount'].sum(),
+            'outflow_total_fare': outflow_grouped['fare_amount'].sum(),
         })
         
         # 计算outflow平均速度：总距离/总时间
@@ -423,6 +426,14 @@ class NTAZoneHourlyTaxiDataProcessor:
         outflow_stats['outflow_avg_speed'] = outflow_stats['outflow_avg_speed'].replace(
             [np.inf, -np.inf], np.nan
         )
+        
+        # 计算outflow payment_type计数（1-6）
+        for payment_type in range(1, 7):
+            payment_counts = outflow_df[outflow_df['payment_type'] == payment_type].groupby(
+                ['hour_index', 'PUNTA']
+            ).size()
+            payment_counts.name = f'outflow_total_payment_{payment_type}'
+            outflow_stats = outflow_stats.join(payment_counts, how='left')
         
         outflow_stats = outflow_stats.reset_index()
         outflow_stats = outflow_stats.rename(columns={'PUNTA': 'NTA_zone'})
@@ -436,6 +447,9 @@ class NTAZoneHourlyTaxiDataProcessor:
             'inflow_total_distance': inflow_grouped['trip_distance'].sum(),
             'inflow_total_passengers': inflow_grouped['passenger_count'].sum(),
             'inflow_total_duration': inflow_grouped['trip_duration_min'].sum(),
+            'inflow_total_tip': inflow_grouped['tip_amount'].sum(),
+            'inflow_total_tolls': inflow_grouped['tolls_amount'].sum(),
+            'inflow_total_fare': inflow_grouped['fare_amount'].sum(),
         })
         
         # 计算inflow平均速度：总距离/总时间
@@ -446,6 +460,14 @@ class NTAZoneHourlyTaxiDataProcessor:
         inflow_stats['inflow_avg_speed'] = inflow_stats['inflow_avg_speed'].replace(
             [np.inf, -np.inf], np.nan
         )
+        
+        # 计算inflow payment_type计数（1-6）
+        for payment_type in range(1, 7):
+            payment_counts = inflow_df[inflow_df['payment_type'] == payment_type].groupby(
+                ['dropoff_hour', 'DONTA']
+            ).size()
+            payment_counts.name = f'inflow_total_payment_{payment_type}'
+            inflow_stats = inflow_stats.join(payment_counts, how='left')
         
         inflow_stats = inflow_stats.reset_index()
         inflow_stats = inflow_stats.rename(columns={'DONTA': 'NTA_zone', 'dropoff_hour': 'hour_index'})
@@ -465,9 +487,16 @@ class NTAZoneHourlyTaxiDataProcessor:
         
         # 填充缺失值为0（表示该小时该区域没有outflow或inflow）
         outflow_cols = ['outflow_trips', 'outflow_total_distance', 'outflow_total_passengers',
-                       'outflow_total_duration', 'outflow_avg_speed']
+                       'outflow_total_duration', 'outflow_avg_speed',
+                       'outflow_total_tip', 'outflow_total_tolls', 'outflow_total_fare']
+        # 添加outflow payment_type列
+        outflow_cols.extend([f'outflow_total_payment_{i}' for i in range(1, 7)])
+        
         inflow_cols = ['inflow_trips', 'inflow_total_distance', 'inflow_total_passengers',
-                      'inflow_total_duration', 'inflow_avg_speed']
+                      'inflow_total_duration', 'inflow_avg_speed',
+                      'inflow_total_tip', 'inflow_total_tolls', 'inflow_total_fare']
+        # 添加inflow payment_type列
+        inflow_cols.extend([f'inflow_total_payment_{i}' for i in range(1, 7)])
         
         for col in outflow_cols + inflow_cols:
             if col in base_df.columns:
@@ -487,8 +516,14 @@ class NTAZoneHourlyTaxiDataProcessor:
             'weather_temperature', 'weather_precipitation', 'weather_windspeed', 'weather_humidity',
             'outflow_trips', 'outflow_total_distance', 'outflow_total_passengers',
             'outflow_total_duration', 'outflow_avg_speed',
+            'outflow_total_tip', 'outflow_total_tolls', 'outflow_total_fare',
+            'outflow_total_payment_1', 'outflow_total_payment_2', 'outflow_total_payment_3',
+            'outflow_total_payment_4', 'outflow_total_payment_5', 'outflow_total_payment_6',
             'inflow_trips', 'inflow_total_distance', 'inflow_total_passengers',
-            'inflow_total_duration', 'inflow_avg_speed'
+            'inflow_total_duration', 'inflow_avg_speed',
+            'inflow_total_tip', 'inflow_total_tolls', 'inflow_total_fare',
+            'inflow_total_payment_1', 'inflow_total_payment_2', 'inflow_total_payment_3',
+            'inflow_total_payment_4', 'inflow_total_payment_5', 'inflow_total_payment_6'
         ]
         
         # 只保留存在的列
@@ -733,6 +768,30 @@ class NTAZoneHourlyTaxiDataProcessor:
         print(f"平均每小时每NTA inflow行程数: {all_aggregated_data['inflow_trips'].mean():.2f}")
         print(f"平均outflow速度: {all_aggregated_data['outflow_avg_speed'].mean():.2f} mph")
         print(f"平均inflow速度: {all_aggregated_data['inflow_avg_speed'].mean():.2f} mph")
+        print(f"\n费用统计:")
+        if 'outflow_total_tip' in all_aggregated_data.columns:
+            print(f"  总outflow小费: ${all_aggregated_data['outflow_total_tip'].sum():,.2f}")
+            print(f"  总inflow小费: ${all_aggregated_data['inflow_total_tip'].sum():,.2f}")
+        if 'outflow_total_tolls' in all_aggregated_data.columns:
+            print(f"  总outflow通行费: ${all_aggregated_data['outflow_total_tolls'].sum():,.2f}")
+            print(f"  总inflow通行费: ${all_aggregated_data['inflow_total_tolls'].sum():,.2f}")
+        if 'outflow_total_fare' in all_aggregated_data.columns:
+            print(f"  总outflow车费: ${all_aggregated_data['outflow_total_fare'].sum():,.2f}")
+            print(f"  总inflow车费: ${all_aggregated_data['inflow_total_fare'].sum():,.2f}")
+        print(f"\n支付方式统计 (outflow):")
+        for i in range(1, 7):
+            col_name = f'outflow_total_payment_{i}'
+            if col_name in all_aggregated_data.columns:
+                total = all_aggregated_data[col_name].sum()
+                pct = (total / all_aggregated_data['outflow_trips'].sum() * 100) if all_aggregated_data['outflow_trips'].sum() > 0 else 0
+                print(f"  Payment Type {i}: {total:,.0f} ({pct:.1f}%)")
+        print(f"\n支付方式统计 (inflow):")
+        for i in range(1, 7):
+            col_name = f'inflow_total_payment_{i}'
+            if col_name in all_aggregated_data.columns:
+                total = all_aggregated_data[col_name].sum()
+                pct = (total / all_aggregated_data['inflow_trips'].sum() * 100) if all_aggregated_data['inflow_trips'].sum() > 0 else 0
+                print(f"  Payment Type {i}: {total:,.0f} ({pct:.1f}%)")
         print(f"\n状态标签分布:")
         print(f"  政策前期比例: {(all_aggregated_data['policy_status'] == 'pre-policy').mean():.2%}")
         print(f"  政策后期比例: {(all_aggregated_data['policy_status'] == 'post-policy').mean():.2%}")
