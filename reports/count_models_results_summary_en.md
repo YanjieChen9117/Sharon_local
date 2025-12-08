@@ -37,7 +37,6 @@ This analysis uses three different regression models (OLS, Poisson, and Negative
 | **P-value** | 0.000334 | 0.012572 | 0.012424 |
 | **Significance** | *** | ** | ** |
 | **Percentage Effect** | N/A | +2.10% | +2.10% |
-| **AIC** | 3,532,397 | 25,125,395 | **25,120,858** ✓ |
 | **Dispersion Ratio** | N/A | 50.83 | N/A |
 | **Theta (θ)** | N/A | N/A | 1,919,428 |
 
@@ -62,7 +61,6 @@ This analysis uses three different regression models (OLS, Poisson, and Negative
 | **P-value** | <0.000001 | 0.218315 | <0.000001 |
 | **Significance** | *** | (not significant) | *** |
 | **Percentage Effect** | N/A | -0.94% | +2.87% |
-| **AIC** | 3,649,352 | 18,391,375 | **3,867,869** ✓ |
 | **Dispersion Ratio** | N/A | 35.84 | N/A |
 | **Theta (θ)** | N/A | N/A | 1.07 |
 
