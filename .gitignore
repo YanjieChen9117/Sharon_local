@@ -5,9 +5,16 @@ bin/
 data/nta_hourly_taxi_summary.csv
 data/nta_hourly_taxi_summary_dropoff.csv
 
+previous_meeting_reports/
+
+data/
+
 # macOS system files
 .DS_Store
 *.DS_Store
+
+.venv/
+.vscode/
 
 data/archive/
 data/

@@ -125,7 +125,7 @@ class NTAZoneHourlyTaxiDataProcessor:
             weather_df['temperature'] = pd.to_numeric(weather_df['temperature'], errors='coerce')
             weather_df['precipitation'] = pd.to_numeric(weather_df['precipitation'], errors='coerce').fillna(0)
             weather_df['windspeed'] = pd.to_numeric(weather_df['windspeed'], errors='coerce')
-            weather_df['humidity'] = pd.to_numeric(weather_df['humidity'], errors='coerce')
+            weather_df['snowfall'] = pd.to_numeric(weather_df['snowfall'], errors='coerce').fillna(0)
             
             # 重命名列以匹配输出要求
             weather_df = weather_df.rename(columns={
@@ -134,22 +134,49 @@ class NTAZoneHourlyTaxiDataProcessor:
                 'temperature': 'weather_temperature',
                 'precipitation': 'weather_precipitation',
                 'windspeed': 'weather_windspeed',
-                'humidity': 'weather_humidity'
+                'snowfall': 'weather_snow'
             })
             
             # 只保留需要的列
             weather_df = weather_df[['hour_index', 'NTA_zone', 'weather_temperature', 
-                                     'weather_precipitation', 'weather_windspeed', 'weather_humidity']].copy()
+                                     'weather_precipitation', 'weather_windspeed', 'weather_snow']].copy()
             
             # 将hour_index向下取整到小时（确保匹配）
             weather_df['hour_index'] = weather_df['hour_index'].dt.floor('H')
             
+            # 检查是否有重复的hour_index和NTA_zone组合
+            duplicates = weather_df.duplicated(subset=['hour_index', 'NTA_zone']).sum()
+            if duplicates > 0:
+                print(f"  ⚠ 警告: 发现 {duplicates} 条重复的hour_index+NTA_zone组合，将保留第一条")
+                weather_df = weather_df.drop_duplicates(subset=['hour_index', 'NTA_zone'], keep='first')
+            
+            # 检查缺失值
+            temp_missing = weather_df['weather_temperature'].isna().sum()
+            wind_missing = weather_df['weather_windspeed'].isna().sum()
+            precip_missing = weather_df['weather_precipitation'].isna().sum()
+            snow_missing = weather_df['weather_snow'].isna().sum()
+            
             print(f"✓ 成功加载NTA天气数据: {len(weather_df)} 条记录")
             print(f"  时间范围: {weather_df['hour_index'].min()} 至 {weather_df['hour_index'].max()}")
             print(f"  NTA区域数: {weather_df['NTA_zone'].nunique()}")
-            print(f"  有温度数据: {weather_df['weather_temperature'].notna().sum()} 条")
-            print(f"  有风速数据: {weather_df['weather_windspeed'].notna().sum()} 条")
-            print(f"  有湿度数据: {weather_df['weather_humidity'].notna().sum()} 条")
+            print(f"  NTA区域列表: {sorted(weather_df['NTA_zone'].unique())}")
+            print(f"  有温度数据: {weather_df['weather_temperature'].notna().sum()} 条 (缺失: {temp_missing})")
+            print(f"  有风速数据: {weather_df['weather_windspeed'].notna().sum()} 条 (缺失: {wind_missing})")
+            print(f"  有降水数据: {weather_df['weather_precipitation'].notna().sum()} 条 (缺失: {precip_missing})")
+            print(f"  有降雪数据: {weather_df['weather_snow'].notna().sum()} 条 (缺失: {snow_missing})")
+            
+            # 检查数据完整性：每个NTA是否都有完整的时间序列
+            unique_hours = weather_df['hour_index'].nunique()
+            unique_ntas = weather_df['NTA_zone'].nunique()
+            expected_records = unique_hours * unique_ntas
+            actual_records = len(weather_df)
+            
+            if actual_records < expected_records:
+                missing_combinations = expected_records - actual_records
+                print(f"  ⚠ 警告: 天气数据不完整，缺失 {missing_combinations:,} 个时间点+NTA组合")
+                print(f"    预期记录数: {expected_records:,}, 实际记录数: {actual_records:,}")
+            else:
+                print(f"  ✓ 天气数据完整，每个NTA都有完整的时间序列")
             
             return weather_df
             
@@ -408,15 +435,23 @@ class NTAZoneHourlyTaxiDataProcessor:
         outflow_df = df[df['PUNTA'].notna()].copy()
         outflow_grouped = outflow_df.groupby(['hour_index', 'PUNTA'])
         
-        outflow_stats = pd.DataFrame({
+        # 构建outflow统计字典，检查字段是否存在
+        outflow_stats_dict = {
             'outflow_trips': outflow_grouped.size(),
             'outflow_total_distance': outflow_grouped['trip_distance'].sum(),
             'outflow_total_passengers': outflow_grouped['passenger_count'].sum(),
             'outflow_total_duration': outflow_grouped['trip_duration_min'].sum(),
-            'outflow_total_tip': outflow_grouped['tip_amount'].sum(),
-            'outflow_total_tolls': outflow_grouped['tolls_amount'].sum(),
-            'outflow_total_fare': outflow_grouped['fare_amount'].sum(),
-        })
+        }
+        
+        # 添加费用相关特征（如果字段存在）
+        if 'fare_amount' in outflow_df.columns:
+            outflow_stats_dict['outflow_total_fare'] = outflow_grouped['fare_amount'].sum()
+        if 'tip_amount' in outflow_df.columns:
+            outflow_stats_dict['outflow_total_tip'] = outflow_grouped['tip_amount'].sum()
+        if 'tolls_amount' in outflow_df.columns:
+            outflow_stats_dict['outflow_total_tolls'] = outflow_grouped['tolls_amount'].sum()
+        
+        outflow_stats = pd.DataFrame(outflow_stats_dict)
         
         # 计算outflow平均速度：总距离/总时间
         outflow_stats['outflow_avg_speed'] = (
@@ -427,14 +462,6 @@ class NTAZoneHourlyTaxiDataProcessor:
             [np.inf, -np.inf], np.nan
         )
         
-        # 计算outflow payment_type计数（1-6）
-        for payment_type in range(1, 7):
-            payment_counts = outflow_df[outflow_df['payment_type'] == payment_type].groupby(
-                ['hour_index', 'PUNTA']
-            ).size()
-            payment_counts.name = f'outflow_total_payment_{payment_type}'
-            outflow_stats = outflow_stats.join(payment_counts, how='left')
-        
         outflow_stats = outflow_stats.reset_index()
         outflow_stats = outflow_stats.rename(columns={'PUNTA': 'NTA_zone'})
         
@@ -442,15 +469,23 @@ class NTAZoneHourlyTaxiDataProcessor:
         inflow_df = df[df['DONTA'].notna()].copy()
         inflow_grouped = inflow_df.groupby(['dropoff_hour', 'DONTA'])
         
-        inflow_stats = pd.DataFrame({
+        # 构建inflow统计字典，检查字段是否存在
+        inflow_stats_dict = {
             'inflow_trips': inflow_grouped.size(),
             'inflow_total_distance': inflow_grouped['trip_distance'].sum(),
             'inflow_total_passengers': inflow_grouped['passenger_count'].sum(),
             'inflow_total_duration': inflow_grouped['trip_duration_min'].sum(),
-            'inflow_total_tip': inflow_grouped['tip_amount'].sum(),
-            'inflow_total_tolls': inflow_grouped['tolls_amount'].sum(),
-            'inflow_total_fare': inflow_grouped['fare_amount'].sum(),
-        })
+        }
+        
+        # 添加费用相关特征（如果字段存在）
+        if 'fare_amount' in inflow_df.columns:
+            inflow_stats_dict['inflow_total_fare'] = inflow_grouped['fare_amount'].sum()
+        if 'tip_amount' in inflow_df.columns:
+            inflow_stats_dict['inflow_total_tip'] = inflow_grouped['tip_amount'].sum()
+        if 'tolls_amount' in inflow_df.columns:
+            inflow_stats_dict['inflow_total_tolls'] = inflow_grouped['tolls_amount'].sum()
+        
+        inflow_stats = pd.DataFrame(inflow_stats_dict)
         
         # 计算inflow平均速度：总距离/总时间
         inflow_stats['inflow_avg_speed'] = (
@@ -460,14 +495,6 @@ class NTAZoneHourlyTaxiDataProcessor:
         inflow_stats['inflow_avg_speed'] = inflow_stats['inflow_avg_speed'].replace(
             [np.inf, -np.inf], np.nan
         )
-        
-        # 计算inflow payment_type计数（1-6）
-        for payment_type in range(1, 7):
-            payment_counts = inflow_df[inflow_df['payment_type'] == payment_type].groupby(
-                ['dropoff_hour', 'DONTA']
-            ).size()
-            payment_counts.name = f'inflow_total_payment_{payment_type}'
-            inflow_stats = inflow_stats.join(payment_counts, how='left')
         
         inflow_stats = inflow_stats.reset_index()
         inflow_stats = inflow_stats.rename(columns={'DONTA': 'NTA_zone', 'dropoff_hour': 'hour_index'})
@@ -488,15 +515,10 @@ class NTAZoneHourlyTaxiDataProcessor:
         # 填充缺失值为0（表示该小时该区域没有outflow或inflow）
         outflow_cols = ['outflow_trips', 'outflow_total_distance', 'outflow_total_passengers',
                        'outflow_total_duration', 'outflow_avg_speed',
-                       'outflow_total_tip', 'outflow_total_tolls', 'outflow_total_fare']
-        # 添加outflow payment_type列
-        outflow_cols.extend([f'outflow_total_payment_{i}' for i in range(1, 7)])
-        
+                       'outflow_total_fare', 'outflow_total_tip', 'outflow_total_tolls']
         inflow_cols = ['inflow_trips', 'inflow_total_distance', 'inflow_total_passengers',
                       'inflow_total_duration', 'inflow_avg_speed',
-                      'inflow_total_tip', 'inflow_total_tolls', 'inflow_total_fare']
-        # 添加inflow payment_type列
-        inflow_cols.extend([f'inflow_total_payment_{i}' for i in range(1, 7)])
+                      'inflow_total_fare', 'inflow_total_tip', 'inflow_total_tolls']
         
         for col in outflow_cols + inflow_cols:
             if col in base_df.columns:
@@ -513,17 +535,13 @@ class NTAZoneHourlyTaxiDataProcessor:
             'hour_index', 'NTA_zone',
             'year', 'month', 'day', 'day_of_week', 'hour_of_day',
             'policy_status', 'weekend_status', 'holiday',
-            'weather_temperature', 'weather_precipitation', 'weather_windspeed', 'weather_humidity',
+            'weather_temperature', 'weather_precipitation', 'weather_windspeed', 'weather_snow',
             'outflow_trips', 'outflow_total_distance', 'outflow_total_passengers',
             'outflow_total_duration', 'outflow_avg_speed',
-            'outflow_total_tip', 'outflow_total_tolls', 'outflow_total_fare',
-            'outflow_total_payment_1', 'outflow_total_payment_2', 'outflow_total_payment_3',
-            'outflow_total_payment_4', 'outflow_total_payment_5', 'outflow_total_payment_6',
+            'outflow_total_fare', 'outflow_total_tip', 'outflow_total_tolls',
             'inflow_trips', 'inflow_total_distance', 'inflow_total_passengers',
             'inflow_total_duration', 'inflow_avg_speed',
-            'inflow_total_tip', 'inflow_total_tolls', 'inflow_total_fare',
-            'inflow_total_payment_1', 'inflow_total_payment_2', 'inflow_total_payment_3',
-            'inflow_total_payment_4', 'inflow_total_payment_5', 'inflow_total_payment_6'
+            'inflow_total_fare', 'inflow_total_tip', 'inflow_total_tolls'
         ]
         
         # 只保留存在的列
@@ -548,7 +566,7 @@ class NTAZoneHourlyTaxiDataProcessor:
             df['weather_temperature'] = np.nan
             df['weather_precipitation'] = 0
             df['weather_windspeed'] = np.nan
-            df['weather_humidity'] = np.nan
+            df['weather_snow'] = 0
             return df
         
         # 合并天气数据（按hour_index和NTA_zone匹配）
@@ -558,19 +576,82 @@ class NTAZoneHourlyTaxiDataProcessor:
             how='left'
         )
         
-        # 处理缺失值
-        df['weather_precipitation'] = df['weather_precipitation'].fillna(0)
-        # 其他天气特征保持为NaN（不填充，因为缺失值可能表示数据缺失）
+        # 诊断缺失情况
+        total_records = len(df)
+        missing_before = df['weather_temperature'].isna().sum()
         
-        # 统计天气数据匹配情况
+        if missing_before > 0:
+            print(f"  ⚠ 发现 {missing_before:,} 条记录 ({missing_before/total_records:.1%}) 缺失天气数据")
+            
+            # 分析缺失原因
+            missing_df = df[df['weather_temperature'].isna()].copy()
+            missing_ntas = missing_df['NTA_zone'].unique()
+            missing_hours = missing_df['hour_index'].unique()
+            
+            # 检查缺失的NTA是否在天气数据中
+            weather_ntas = set(self.weather_data['NTA_zone'].unique())
+            missing_ntas_set = set(missing_ntas)
+            nta_not_in_weather = missing_ntas_set - weather_ntas
+            
+            # 检查缺失的时间是否在天气数据中
+            weather_hours = set(self.weather_data['hour_index'].unique())
+            missing_hours_set = set(missing_hours)
+            hours_not_in_weather = missing_hours_set - weather_hours
+            
+            if nta_not_in_weather:
+                print(f"    ⚠ 以下NTA区域不在天气数据中: {sorted(nta_not_in_weather)}")
+            
+            if hours_not_in_weather:
+                print(f"    ⚠ 以下时间点不在天气数据中: {len(hours_not_in_weather)} 个时间点")
+                print(f"      最早: {min(hours_not_in_weather)}, 最晚: {max(hours_not_in_weather)}")
+            
+            # 对于缺失的天气数据，使用前向填充（按NTA区域分组，按时间排序）
+            print(f"  正在使用前向填充处理缺失的天气数据...")
+            
+            # 按NTA区域分组，对每个区域按时间排序后进行前向填充
+            weather_cols = ['weather_temperature', 'weather_precipitation', 
+                          'weather_windspeed', 'weather_snow']
+            
+            # 确保数据按NTA区域和时间排序
+            df = df.sort_values(['NTA_zone', 'hour_index']).reset_index(drop=True)
+            
+            for col in weather_cols:
+                if col in df.columns:
+                    # 按NTA区域分组，对每个区域按时间排序后前向填充
+                    df[col] = df.groupby('NTA_zone')[col].ffill()
+            
+            # 如果前向填充后仍有缺失，尝试使用同一时间点所有NTA的平均值
+            for col in ['weather_temperature', 'weather_windspeed']:
+                if col in df.columns:
+                    # 计算每个时间点的平均值
+                    hourly_avg = df.groupby('hour_index')[col].transform('mean')
+                    # 只填充仍然缺失的值
+                    df[col] = df[col].fillna(hourly_avg)
+            
+            # 对于降水和降雪，如果仍然缺失则填充为0
+            df['weather_precipitation'] = df['weather_precipitation'].fillna(0)
+            df['weather_snow'] = df['weather_snow'].fillna(0)
+            
+            # 统计填充后的情况
+            missing_after = df['weather_temperature'].isna().sum()
+            if missing_after < missing_before:
+                print(f"  ✓ 前向填充后，缺失记录减少到 {missing_after:,} 条 ({missing_after/total_records:.1%})")
+            if missing_after > 0:
+                print(f"  ⚠ 仍有 {missing_after:,} 条记录缺失天气数据（可能是数据范围外的记录）")
+        else:
+            # 处理缺失值（即使没有缺失，也要确保降水和降雪为0而不是NaN）
+            df['weather_precipitation'] = df['weather_precipitation'].fillna(0)
+            df['weather_snow'] = df['weather_snow'].fillna(0)
+        
+        # 统计最终天气数据匹配情况
         total_records = len(df)
         temp_matched = df['weather_temperature'].notna().sum()
         wind_matched = df['weather_windspeed'].notna().sum()
-        humidity_matched = df['weather_humidity'].notna().sum()
+        snow_matched = df['weather_snow'].notna().sum()
         
-        print(f"  天气数据匹配: 温度={temp_matched:,} ({temp_matched/total_records:.1%}), "
+        print(f"  最终天气数据匹配: 温度={temp_matched:,} ({temp_matched/total_records:.1%}), "
               f"风速={wind_matched:,} ({wind_matched/total_records:.1%}), "
-              f"湿度={humidity_matched:,} ({humidity_matched/total_records:.1%})")
+              f"降雪={snow_matched:,} ({snow_matched/total_records:.1%})")
         
         return df
     
@@ -769,29 +850,27 @@ class NTAZoneHourlyTaxiDataProcessor:
         print(f"平均outflow速度: {all_aggregated_data['outflow_avg_speed'].mean():.2f} mph")
         print(f"平均inflow速度: {all_aggregated_data['inflow_avg_speed'].mean():.2f} mph")
         print(f"\n费用统计:")
-        if 'outflow_total_tip' in all_aggregated_data.columns:
-            print(f"  总outflow小费: ${all_aggregated_data['outflow_total_tip'].sum():,.2f}")
-            print(f"  总inflow小费: ${all_aggregated_data['inflow_total_tip'].sum():,.2f}")
-        if 'outflow_total_tolls' in all_aggregated_data.columns:
-            print(f"  总outflow通行费: ${all_aggregated_data['outflow_total_tolls'].sum():,.2f}")
-            print(f"  总inflow通行费: ${all_aggregated_data['inflow_total_tolls'].sum():,.2f}")
         if 'outflow_total_fare' in all_aggregated_data.columns:
-            print(f"  总outflow车费: ${all_aggregated_data['outflow_total_fare'].sum():,.2f}")
-            print(f"  总inflow车费: ${all_aggregated_data['inflow_total_fare'].sum():,.2f}")
-        print(f"\n支付方式统计 (outflow):")
-        for i in range(1, 7):
-            col_name = f'outflow_total_payment_{i}'
-            if col_name in all_aggregated_data.columns:
-                total = all_aggregated_data[col_name].sum()
-                pct = (total / all_aggregated_data['outflow_trips'].sum() * 100) if all_aggregated_data['outflow_trips'].sum() > 0 else 0
-                print(f"  Payment Type {i}: {total:,.0f} ({pct:.1f}%)")
-        print(f"\n支付方式统计 (inflow):")
-        for i in range(1, 7):
-            col_name = f'inflow_total_payment_{i}'
-            if col_name in all_aggregated_data.columns:
-                total = all_aggregated_data[col_name].sum()
-                pct = (total / all_aggregated_data['inflow_trips'].sum() * 100) if all_aggregated_data['inflow_trips'].sum() > 0 else 0
-                print(f"  Payment Type {i}: {total:,.0f} ({pct:.1f}%)")
+            outflow_fare_total = all_aggregated_data['outflow_total_fare'].sum()
+            outflow_tip_total = all_aggregated_data['outflow_total_tip'].sum()
+            outflow_tolls_total = all_aggregated_data['outflow_total_tolls'].sum()
+            outflow_trips_total = all_aggregated_data['outflow_trips'].sum()
+            print(f"总outflow费用: ${outflow_fare_total:,.2f}")
+            print(f"总outflow小费: ${outflow_tip_total:,.2f}")
+            print(f"总outflow过路费: ${outflow_tolls_total:,.2f}")
+            if outflow_trips_total > 0:
+                print(f"平均每次outflow行程费用: ${(outflow_fare_total / outflow_trips_total):.2f}")
+        
+        if 'inflow_total_fare' in all_aggregated_data.columns:
+            inflow_fare_total = all_aggregated_data['inflow_total_fare'].sum()
+            inflow_tip_total = all_aggregated_data['inflow_total_tip'].sum()
+            inflow_tolls_total = all_aggregated_data['inflow_total_tolls'].sum()
+            inflow_trips_total = all_aggregated_data['inflow_trips'].sum()
+            print(f"总inflow费用: ${inflow_fare_total:,.2f}")
+            print(f"总inflow小费: ${inflow_tip_total:,.2f}")
+            print(f"总inflow过路费: ${inflow_tolls_total:,.2f}")
+            if inflow_trips_total > 0:
+                print(f"平均每次inflow行程费用: ${(inflow_fare_total / inflow_trips_total):.2f}")
         print(f"\n状态标签分布:")
         print(f"  政策前期比例: {(all_aggregated_data['policy_status'] == 'pre-policy').mean():.2%}")
         print(f"  政策后期比例: {(all_aggregated_data['policy_status'] == 'post-policy').mean():.2%}")
@@ -808,10 +887,11 @@ class NTAZoneHourlyTaxiDataProcessor:
         if len(wind_data) > 0:
             print(f"  平均风速: {wind_data.mean():.1f} mph")
             print(f"  有风速数据比例: {len(wind_data) / len(all_aggregated_data):.2%}")
-        humidity_data = all_aggregated_data['weather_humidity'].dropna()
-        if len(humidity_data) > 0:
-            print(f"  平均湿度: {humidity_data.mean():.1f}%")
-            print(f"  有湿度数据比例: {len(humidity_data) / len(all_aggregated_data):.2%}")
+        snow_data = all_aggregated_data['weather_snow'].dropna()
+        if len(snow_data) > 0:
+            print(f"  平均降雪量: {snow_data.mean():.2f} mm")
+            print(f"  有降雪数据比例: {len(snow_data) / len(all_aggregated_data):.2%}")
+            print(f"  有降雪记录数: {(snow_data > 0).sum():,} 条")
         print(f"\nNTA区域统计:")
         top_ntas_outflow = all_aggregated_data.groupby('NTA_zone')['outflow_trips'].sum().sort_values(ascending=False).head(10)
         print("  前10个NTA区域（按outflow行程数）:")
