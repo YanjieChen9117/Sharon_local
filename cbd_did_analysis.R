@@ -34,7 +34,7 @@
 
 # 加载必要的库
 # 检查并安装缺失的包
-required_packages <- c("dplyr", "lubridate", "fixest")
+required_packages <- c("dplyr", "lubridate", "lmtest", "sandwich")
 missing_packages <- required_packages[!(required_packages %in% installed.packages()[, "Package"])]
 
 if (length(missing_packages) > 0) {
@@ -44,7 +44,8 @@ if (length(missing_packages) > 0) {
 
 library(dplyr)
 library(lubridate)
-library(fixest)
+library(lmtest)
+library(sandwich)
 
 # ============================================================================
 # 1. 数据加载和准备
@@ -135,20 +136,93 @@ cat(sprintf("Treatment group (CBD): %d 条记录\n", sum(did_data$treatment == 1
 cat(sprintf("Control group (Others): %d 条记录\n", sum(did_data$treatment == 0)))
 cat("\n")
 
+# ============================================================================
+# 1.5. 对dependent variables进行log转换
+# ============================================================================
+
+cat("=== 对因变量进行log转换 ===\n")
+
+# 定义需要转换的变量
+dependent_vars <- c("outflow_trips", "inflow_trips", "outflow_avg_speed", "inflow_avg_speed")
+
+for (var in dependent_vars) {
+  if (var %in% names(did_data)) {
+    # 检查数据范围
+    var_data <- did_data[[var]]
+    var_data_numeric <- as.numeric(var_data)
+    var_data_clean <- var_data_numeric[!is.na(var_data_numeric)]
+    
+    # 统计信息
+    n_total <- length(var_data_numeric)
+    n_valid <- length(var_data_clean)
+    n_zero <- sum(var_data_clean == 0, na.rm = TRUE)
+    n_negative <- sum(var_data_clean < 0, na.rm = TRUE)
+    n_positive <- sum(var_data_clean > 0, na.rm = TRUE)
+    
+    cat(sprintf("\n%s:\n", var))
+    cat(sprintf("  总观测数: %d\n", n_total))
+    cat(sprintf("  有效观测数: %d\n", n_valid))
+    cat(sprintf("  零值: %d\n", n_zero))
+    cat(sprintf("  负值: %d\n", n_negative))
+    cat(sprintf("  正值: %d\n", n_positive))
+    
+    # 创建log转换后的变量名
+    log_var_name <- paste0("log_", var)
+    
+    # 进行log转换
+    # 对于trip count，如果有零值，使用log(1+x)
+    # 对于speed，应该都是正值，直接使用log
+    if (grepl("trips", var)) {
+      # trip count: 使用 log(1+x) 处理零值
+      did_data[[log_var_name]] <- log1p(var_data_numeric)
+      cat(sprintf("  转换方法: log(1+x) (处理零值)\n"))
+    } else {
+      # speed: 直接使用log，但需要处理零值和负值
+      if (n_zero > 0 || n_negative > 0) {
+        # 如果有零值或负值，使用log(1+x)
+        did_data[[log_var_name]] <- log1p(pmax(var_data_numeric, 0))
+        cat(sprintf("  转换方法: log(1+x) (处理零值和负值)\n"))
+      } else {
+        # 如果都是正值，直接使用log
+        did_data[[log_var_name]] <- log(var_data_numeric)
+        cat(sprintf("  转换方法: log(x)\n"))
+      }
+    }
+    
+    # 检查转换后的数据
+    log_data <- did_data[[log_var_name]]
+    log_data_clean <- log_data[!is.na(log_data)]
+    cat(sprintf("  转换后有效观测数: %d\n", length(log_data_clean)))
+    cat(sprintf("  转换后范围: [%.4f, %.4f]\n", min(log_data_clean), max(log_data_clean)))
+  } else {
+    cat(sprintf("警告: 变量 %s 不在数据集中\n", var))
+  }
+}
+
+cat("\n")
+
 
 # ============================================================================
 # 2. DiD分析函数
 # ============================================================================
 
 run_did_analysis <- function(data, outcome_var, outcome_name) {
-  # 运行DiD分析（使用fixest包处理共线性）
+  # 运行DiD分析（使用标准lm函数）
   #
   # 参数:
   #   data: 分析数据框
-  #   outcome_var: 结果变量名
+  #   outcome_var: 结果变量名（原始变量名，函数内部会使用log转换后的变量）
   #   outcome_name: 结果变量显示名称
 
-  cat(sprintf("\n=== DiD分析: %s ===\n", outcome_name))
+  cat(sprintf("\n=== DiD分析: %s (log转换后) ===\n", outcome_name))
+  
+  # 使用log转换后的变量
+  log_outcome_var <- paste0("log_", outcome_var)
+  
+  # 检查log转换后的变量是否存在
+  if (!log_outcome_var %in% names(data)) {
+    stop(sprintf("错误: log转换后的变量 %s 不存在。请先进行log转换。", log_outcome_var))
+  }
   # 根据outcome_var确定使用哪些财务控制变量
   # 先定义候选变量，然后检查哪些在数据中存在
   if (grepl("^outflow", outcome_var)) {
@@ -188,7 +262,7 @@ run_did_analysis <- function(data, outcome_var, outcome_name) {
 
   # 检查每个变量的缺失值
   check_vars <- c(
-    outcome_var, "treatment", "post", "day_of_week", "hour_of_day",
+    log_outcome_var, "treatment", "post", "day_of_week", "hour_of_day",
     "holiday", "weather_temperature", "weather_precipitation",
     "weather_windspeed", "weather_snow"
   )
@@ -212,7 +286,7 @@ run_did_analysis <- function(data, outcome_var, outcome_name) {
   # 移除缺失值（逐步筛选，以便诊断）
   analysis_data <- data %>%
     filter(
-      !is.na(.data[[outcome_var]]),
+      !is.na(.data[[log_outcome_var]]),
       !is.na(treatment),
       !is.na(post),
       !is.na(day_of_week),
@@ -284,44 +358,33 @@ run_did_analysis <- function(data, outcome_var, outcome_name) {
     all_controls <- base_controls
   }
 
-  # 使用fixest的feols函数（仅检查控制变量的共线性）
-  # 注意：只检查控制变量之间的共线性，不添加固定效应
-  # treatment, post, treatment_post 是核心变量，不会被删除
+  # 使用标准lm函数进行回归
   formula_str <- sprintf(
     "%s ~ treatment + post + treatment_post + %s",
-    outcome_var, all_controls
+    log_outcome_var, all_controls
   )
 
   formula_obj <- as.formula(formula_str)
 
-  # 运行fixest回归
-  cat("\n运行fixest模型（检查控制变量共线性）...\n")
-  model <- feols(formula_obj, data = analysis_data, vcov = "HC3")
+  # 运行标准线性回归
+  cat("\n运行线性回归模型...\n")
+  model <- lm(formula_obj, data = analysis_data)
 
-  # 检查控制变量的共线性
-  # 先运行一个只包含控制变量的模型来检查共线性
-  cat("\n=== 控制变量共线性检查 ===\n")
-  controls_formula <- as.formula(sprintf("%s ~ %s", outcome_var, all_controls))
-  controls_model <- feols(controls_formula, data = analysis_data)
-
-  collinearity_info <- collinearity(controls_model)
-  if (!is.null(collinearity_info)) {
-    if (is.character(collinearity_info) && length(collinearity_info) > 0) {
-      cat("控制变量中被删除的共线变量:\n")
-      for (var in collinearity_info) {
-        cat(sprintf("  - %s\n", var))
-      }
-    } else if (is.data.frame(collinearity_info) && nrow(collinearity_info) > 0) {
-      cat("控制变量中被删除的共线变量:\n")
-      print(collinearity_info)
-    } else {
-      cat("未检测到控制变量中的完全共线变量（所有控制变量都被保留）\n")
+  # 检查共线性（使用模型摘要中的信息）
+  cat("\n=== 模型诊断 ===\n")
+  
+  # 检查是否有变量被删除（由于完全共线性）
+  if (any(is.na(coef(model)))) {
+    cat("警告: 检测到完全共线变量，以下变量被自动删除:\n")
+    na_coefs <- names(coef(model))[is.na(coef(model))]
+    for (var in na_coefs) {
+      cat(sprintf("  - %s\n", var))
     }
   } else {
-    cat("未检测到控制变量中的完全共线变量（所有控制变量都被保留）\n")
+    cat("未检测到完全共线变量（所有变量都被保留）\n")
   }
 
-  # 检查完整模型中实际使用的变量
+  # 显示模型中实际使用的变量
   final_coefs <- names(coef(model))
   cat("\n完整模型中实际估计的系数:\n")
   cat(sprintf("  核心变量: treatment, post, treatment_post\n"))
@@ -330,21 +393,26 @@ run_did_analysis <- function(data, outcome_var, outcome_name) {
     cat(sprintf("  控制变量: %s\n", paste(control_coefs, collapse = ", ")))
   }
 
+  # 使用稳健标准误（HC3）
+  robust_se <- sqrt(diag(vcovHC(model, type = "HC3")))
+  
   # 提取treatment_post系数（政策效应）
   coef_table <- coef(model)
-  se_table <- se(model)
+  se_table <- robust_se
 
   if ("treatment_post" %in% names(coef_table)) {
     treatment_effect <- coef_table["treatment_post"]
     treatment_se <- se_table["treatment_post"]
 
-    # 计算p值（使用t分布）
+    # 计算p值（使用t分布，自由度为n-k）
+    df_residual <- model$df.residual
     t_stat <- treatment_effect / treatment_se
-    treatment_pvalue <- 2 * (1 - pnorm(abs(t_stat)))
+    treatment_pvalue <- 2 * (1 - pt(abs(t_stat), df = df_residual))
 
-    # 计算95%置信区间
-    treatment_ci_lower <- treatment_effect - 1.96 * treatment_se
-    treatment_ci_upper <- treatment_effect + 1.96 * treatment_se
+    # 计算95%置信区间（使用t分布的临界值）
+    t_critical <- qt(0.975, df = df_residual)
+    treatment_ci_lower <- treatment_effect - t_critical * treatment_se
+    treatment_ci_upper <- treatment_effect + t_critical * treatment_se
 
     # 打印结果
     cat(sprintf("\n政策效应 (β₃): %.4f\n", treatment_effect))
@@ -363,9 +431,9 @@ run_did_analysis <- function(data, outcome_var, outcome_name) {
     stop("未找到treatment_post系数，请检查模型设定")
   }
 
-  # 打印模型摘要
-  cat("\n=== 回归模型摘要 ===\n")
-  print(summary(model))
+  # 打印模型摘要（使用稳健标准误）
+  cat("\n=== 回归模型摘要（稳健标准误）===\n")
+  print(coeftest(model, vcov = vcovHC(model, type = "HC3")))
 
   # 返回结果
   return(list(
@@ -376,8 +444,8 @@ run_did_analysis <- function(data, outcome_var, outcome_name) {
     treatment_ci = c(treatment_ci_lower, treatment_ci_upper),
     n_obs = nrow(analysis_data),
     outcome_var = outcome_var,
-    outcome_name = outcome_name,
-    collinearity_info = collinearity_info
+    log_outcome_var = log_outcome_var,
+    outcome_name = outcome_name
   ))
 }
 
@@ -402,33 +470,40 @@ desc_stats <- did_data %>%
 cat("\n按组别和时间段的均值:\n")
 print(desc_stats)
 
-# 计算DiD的简单估计（未控制其他变量）
-cat("\n=== 简单DiD估计（未控制其他变量）===\n")
+# 计算DiD的简单估计（未控制其他变量，使用log转换后的变量）
+cat("\n=== 简单DiD估计（未控制其他变量，log转换后）===\n")
 
 for (var in c("outflow_trips", "inflow_trips", "outflow_avg_speed", "inflow_avg_speed")) {
-  # Treatment group
-  treatment_pre <- mean(did_data[did_data$treatment == 1 & did_data$post == 0, var], na.rm = TRUE)
-  treatment_post <- mean(did_data[did_data$treatment == 1 & did_data$post == 1, var], na.rm = TRUE)
-  treatment_change <- treatment_post - treatment_pre
+  log_var <- paste0("log_", var)
+  
+  if (log_var %in% names(did_data)) {
+    # Treatment group
+    treatment_pre <- mean(did_data[did_data$treatment == 1 & did_data$post == 0, log_var], na.rm = TRUE)
+    treatment_post <- mean(did_data[did_data$treatment == 1 & did_data$post == 1, log_var], na.rm = TRUE)
+    treatment_change <- treatment_post - treatment_pre
 
-  # Control group
-  control_pre <- mean(did_data[did_data$treatment == 0 & did_data$post == 0, var], na.rm = TRUE)
-  control_post <- mean(did_data[did_data$treatment == 0 & did_data$post == 1, var], na.rm = TRUE)
-  control_change <- control_post - control_pre
+    # Control group
+    control_pre <- mean(did_data[did_data$treatment == 0 & did_data$post == 0, log_var], na.rm = TRUE)
+    control_post <- mean(did_data[did_data$treatment == 0 & did_data$post == 1, log_var], na.rm = TRUE)
+    control_change <- control_post - control_pre
 
-  # DiD estimate
-  did_estimate <- treatment_change - control_change
+    # DiD estimate
+    did_estimate <- treatment_change - control_change
 
-  cat(sprintf("\n%s:\n", var))
-  cat(sprintf(
-    "  Treatment group - Pre: %.4f, Post: %.4f, Change: %.4f\n",
-    treatment_pre, treatment_post, treatment_change
-  ))
-  cat(sprintf(
-    "  Control group - Pre: %.4f, Post: %.4f, Change: %.4f\n",
-    control_pre, control_post, control_change
-  ))
-  cat(sprintf("  DiD估计: %.4f\n", did_estimate))
+    cat(sprintf("\n%s (log转换后):\n", var))
+    cat(sprintf(
+      "  Treatment group - Pre: %.4f, Post: %.4f, Change: %.4f\n",
+      treatment_pre, treatment_post, treatment_change
+    ))
+    cat(sprintf(
+      "  Control group - Pre: %.4f, Post: %.4f, Change: %.4f\n",
+      control_pre, control_post, control_change
+    ))
+    cat(sprintf("  DiD估计: %.4f\n", did_estimate))
+    cat(sprintf("  注意: 这是log尺度上的DiD估计\n"))
+  } else {
+    cat(sprintf("\n警告: %s 的log转换变量不存在\n", var))
+  }
 }
 
 # ============================================================================

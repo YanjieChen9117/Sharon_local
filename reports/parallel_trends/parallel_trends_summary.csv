@@ -1,0 +1,5 @@
+"Outcome","Trend_Test_P","Trend_Test_Conclusion","Event_Study_PreSig","Event_Study_Conclusion","Placebo_P","Placebo_Conclusion","Overall_Assessment"
+"Log(Outflow Trips)",0.00889530148442491,",5,",0.0105527306065928,","
+"Log(Inflow Trips)",0.0368850560240758,",6,",0.0329648109486136,","
+"Log(Outflow Avg Speed)",0.0228566586889212,",5,",0.0345093137636935,","
+"Log(Inflow Avg Speed)",0.000169576816057275,",7,",0.00168107494877693,","

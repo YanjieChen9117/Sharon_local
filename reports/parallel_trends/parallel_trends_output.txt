@@ -1,0 +1,313 @@
+
+Attaching package: 'dplyr'
+
+The following objects are masked from 'package:stats':
+
+    filter, lag
+
+The following objects are masked from 'package:base':
+
+    intersect, setdiff, setequal, union
+
+
+Attaching package: 'lubridate'
+
+The following objects are masked from 'package:base':
+
+    date, intersect, setdiff, union
+
+Loading required package: zoo
+
+Attaching package: 'zoo'
+
+The following objects are masked from 'package:base':
+
+    as.Date, as.Date.numeric
+
+=== 加载数据 ===
+
+=== 进行log转换 ===
+  已转换: outflow_trips -> log_outflow_trips
+  已转换: inflow_trips -> log_inflow_trips
+  已转换: outflow_avg_speed -> log_outflow_avg_speed
+  已转换: inflow_avg_speed -> log_inflow_avg_speed
+
+总观测数: 412812
+Pre-policy观测数: 206856
+Post-policy观测数: 205956
+Treatment组观测数: 183472
+Control组观测数: 229340
+
+
+ ================================================================================ 
+=== 方法1: 可视化趋势检验 ===
+================================================================================ 
+
+正在生成趋势可视化...
+  已保存: /Users/yanjiechen/Documents/Github/Sharon_local/reports/parallel_trends/trend_log_outflow_trips.png
+  已保存: /Users/yanjiechen/Documents/Github/Sharon_local/reports/parallel_trends/trend_log_inflow_trips.png
+  已保存: /Users/yanjiechen/Documents/Github/Sharon_local/reports/parallel_trends/trend_log_outflow_avg_speed.png
+  已保存: /Users/yanjiechen/Documents/Github/Sharon_local/reports/parallel_trends/trend_log_inflow_avg_speed.png
+
+可视化检验说明：
+- 如果两条线在pre-policy期间（红线之前）基本平行，说明平行趋势假设成立
+- 如果两条线在pre-policy期间有明显的趋势差异，说明平行趋势假设可能不成立
+
+
+ ================================================================================ 
+=== 方法2: 时间趋势差异检验（仅使用Pre-policy数据）===
+================================================================================ 
+
+原理：
+在pre-policy期间运行回归：Y = β₀ + β₁*Treatment + β₂*Time + β₃*(Treatment×Time) + Controls
+如果β₃显著不为0，说明treatment组和control组有不同的时间趋势，违反平行趋势假设
+
+
+--- Log(Outflow Trips) ---
+有效观测数: 206856
+Treatment×Time系数: 0.000273
+标准误: 0.000105
+t值: 2.6161
+P值: 0.008895
+结论: ❌ 拒绝平行趋势假设（p < 0.05）
+
+--- Log(Inflow Trips) ---
+有效观测数: 206856
+Treatment×Time系数: 0.000193
+标准误: 0.000093
+t值: 2.0870
+P值: 0.036885
+结论: ❌ 拒绝平行趋势假设（p < 0.05）
+
+--- Log(Outflow Avg Speed) ---
+有效观测数: 206856
+Treatment×Time系数: -0.000131
+标准误: 0.000057
+t值: -2.2758
+P值: 0.022857
+结论: ❌ 拒绝平行趋势假设（p < 0.05）
+
+--- Log(Inflow Avg Speed) ---
+有效观测数: 206856
+Treatment×Time系数: -0.000191
+标准误: 0.000051
+t值: -3.7606
+P值: 0.000170
+结论: ❌ 拒绝平行趋势假设（p < 0.05）
+
+
+ ================================================================================ 
+=== 方法3: Event Study 分析 ===
+================================================================================ 
+
+原理：
+将pre-policy期间分成多个时期，创建每个时期与treatment的交互项
+如果所有pre-policy时期的系数都不显著，说明平行趋势假设成立
+
+Relative month 范围: -7 到 12
+
+--- Log(Outflow Trips) ---
+有效观测数: 412812
+月份范围: -7 到 12 (排除基准月 0)
+
+运行回归模型...
+交互项数量: 15
+
+Pre-policy期间的treatment效应:
+  Month -7: -0.039159 (p=0.0558) *
+  Month -6: 0.047592 (p=0.0162) **
+  Month -5: 0.099434 (p=0.0000) **
+  Month -4: 0.099909 (p=0.0000) **
+  Month -3: 0.140089 (p=0.0000) **
+  Month -2: 0.171006 (p=0.0000) **
+  Month -1: 0.014018 (p=0.4276) 
+
+Post-policy期间的treatment效应:
+  Month 5: -0.001980 (p=0.9273) 
+  Month 6: 0.061541 (p=0.0036) **
+  Month 7: 0.130194 (p=0.0000) **
+  Month 8: 0.139524 (p=0.0000) **
+  Month 9: 0.174111 (p=0.0000) **
+  Month 10: 0.147716 (p=0.0000) **
+  Month 11: 0.013987 (p=0.4578) 
+  Month 12: -0.021078 (p=0.2697) 
+
+结论: ❌ Pre-policy期间有5个月显示显著treatment效应，可能违反平行趋势假设
+
+已保存event study图: /Users/yanjiechen/Documents/Github/Sharon_local/reports/parallel_trends/event_study_log_outflow_trips.png
+
+--- Log(Inflow Trips) ---
+有效观测数: 412812
+月份范围: -7 到 12 (排除基准月 0)
+
+运行回归模型...
+交互项数量: 15
+
+Pre-policy期间的treatment效应:
+  Month -7: -0.034916 (p=0.0363) **
+  Month -6: 0.036498 (p=0.0237) **
+  Month -5: 0.092291 (p=0.0000) **
+  Month -4: 0.093313 (p=0.0000) **
+  Month -3: 0.132960 (p=0.0000) **
+  Month -2: 0.154961 (p=0.0000) **
+  Month -1: 0.014509 (p=0.3000) 
+
+Post-policy期间的treatment效应:
+  Month 5: 0.018817 (p=0.2982) 
+  Month 6: 0.079910 (p=0.0000) **
+  Month 7: 0.148131 (p=0.0000) **
+  Month 8: 0.148798 (p=0.0000) **
+  Month 9: 0.184113 (p=0.0000) **
+  Month 10: 0.153167 (p=0.0000) **
+  Month 11: 0.033661 (p=0.0290) **
+  Month 12: -0.001980 (p=0.8993) 
+
+结论: ❌ Pre-policy期间有6个月显示显著treatment效应，可能违反平行趋势假设
+
+已保存event study图: /Users/yanjiechen/Documents/Github/Sharon_local/reports/parallel_trends/event_study_log_inflow_trips.png
+
+--- Log(Outflow Avg Speed) ---
+有效观测数: 412812
+月份范围: -7 到 12 (排除基准月 0)
+
+运行回归模型...
+交互项数量: 15
+
+Pre-policy期间的treatment效应:
+  Month -7: 0.033839 (p=0.0001) **
+  Month -6: 0.017872 (p=0.0287) **
+  Month -5: 0.006017 (p=0.4179) 
+  Month -4: 0.004488 (p=0.5261) 
+  Month -3: -0.027459 (p=0.0000) **
+  Month -2: -0.029061 (p=0.0000) **
+  Month -1: -0.016077 (p=0.0129) **
+
+Post-policy期间的treatment效应:
+  Month 5: 0.050196 (p=0.0000) **
+  Month 6: 0.017604 (p=0.0547) *
+  Month 7: 0.035921 (p=0.0000) **
+  Month 8: 0.005162 (p=0.5157) 
+  Month 9: -0.025035 (p=0.0010) **
+  Month 10: -0.030901 (p=0.0000) **
+  Month 11: -0.036513 (p=0.0000) **
+  Month 12: -0.010625 (p=0.1818) 
+
+结论: ❌ Pre-policy期间有5个月显示显著treatment效应，可能违反平行趋势假设
+
+已保存event study图: /Users/yanjiechen/Documents/Github/Sharon_local/reports/parallel_trends/event_study_log_outflow_avg_speed.png
+
+--- Log(Inflow Avg Speed) ---
+有效观测数: 412812
+月份范围: -7 到 12 (排除基准月 0)
+
+运行回归模型...
+交互项数量: 15
+
+Pre-policy期间的treatment效应:
+  Month -7: 0.022204 (p=0.0010) **
+  Month -6: -0.015972 (p=0.0132) **
+  Month -5: -0.014473 (p=0.0105) **
+  Month -4: -0.021638 (p=0.0001) **
+  Month -3: -0.050346 (p=0.0000) **
+  Month -2: -0.059086 (p=0.0000) **
+  Month -1: -0.012661 (p=0.0070) **
+
+Post-policy期间的treatment效应:
+  Month 5: 0.028045 (p=0.0004) **
+  Month 6: -0.011387 (p=0.1308) 
+  Month 7: 0.005196 (p=0.4273) 
+  Month 8: -0.017026 (p=0.0072) **
+  Month 9: -0.032503 (p=0.0000) **
+  Month 10: -0.031753 (p=0.0000) **
+  Month 11: -0.016816 (p=0.0067) **
+  Month 12: -0.008888 (p=0.1675) 
+
+结论: ❌ Pre-policy期间有7个月显示显著treatment效应，可能违反平行趋势假设
+
+已保存event study图: /Users/yanjiechen/Documents/Github/Sharon_local/reports/parallel_trends/event_study_log_inflow_avg_speed.png
+
+
+ ================================================================================ 
+=== 方法4: Placebo测试 ===
+================================================================================ 
+
+原理：
+在pre-policy期间选择一个虚假的政策日期（例如2024-05-01）
+运行DiD分析，如果发现显著效应，说明可能存在其他因素影响结果
+
+Placebo政策日期: 2024-05-01
+
+--- Log(Outflow Trips) ---
+有效观测数: 206856
+  Placebo pre: 100368
+  Placebo post: 106488
+Placebo Treatment效应: 0.037152
+标准误: 0.014528
+t值: 2.5572
+P值: 0.010553
+结论: ❌ 发现显著的placebo效应（p < 0.05），可能违反平行趋势假设
+
+--- Log(Inflow Trips) ---
+有效观测数: 206856
+  Placebo pre: 100368
+  Placebo post: 106488
+Placebo Treatment效应: 0.027414
+标准误: 0.012855
+t值: 2.1325
+P值: 0.032965
+结论: ❌ 发现显著的placebo效应（p < 0.05），可能违反平行趋势假设
+
+--- Log(Outflow Avg Speed) ---
+有效观测数: 206856
+  Placebo pre: 100368
+  Placebo post: 106488
+Placebo Treatment效应: -0.016648
+标准误: 0.007875
+t值: -2.1141
+P值: 0.034509
+结论: ❌ 发现显著的placebo效应（p < 0.05），可能违反平行趋势假设
+
+--- Log(Inflow Avg Speed) ---
+有效观测数: 206856
+  Placebo pre: 100368
+  Placebo post: 106488
+Placebo Treatment效应: -0.021727
+标准误: 0.006916
+t值: -3.1415
+P值: 0.001681
+结论: ❌ 发现显著的placebo效应（p < 0.05），可能违反平行趋势假设
+
+
+ ================================================================================ 
+=== 平行趋势假设检验结果汇总 ===
+================================================================================ 
+
+                 Outcome Trend_Test_P    Trend_Test_Conclusion
+1     Log(Outflow Trips) 0.0088953015 \346\213\222\347\273\235
+2      Log(Inflow Trips) 0.0368850560 \346\213\222\347\273\235
+3 Log(Outflow Avg Speed) 0.0228566587 \346\213\222\347\273\235
+4  Log(Inflow Avg Speed) 0.0001695768 \346\213\222\347\273\235
+  Event_Study_PreSig               Event_Study_Conclusion   Placebo_P
+1                  5 \344\270\215\346\224\257\346\214\201 0.010552731
+2                  6 \344\270\215\346\224\257\346\214\201 0.032964811
+3                  5 \344\270\215\346\224\257\346\214\201 0.034509314
+4                  7 \344\270\215\346\224\257\346\214\201 0.001681075
+        Placebo_Conclusion
+1 \350\277\235\345\217\215
+2 \350\277\235\345\217\215
+3 \350\277\235\345\217\215
+4 \350\277\235\345\217\215
+                                                                                                                     Overall_Assessment
+1 \342\235\214 \345\217\257\350\203\275\350\277\235\345\217\215\345\271\263\350\241\214\350\266\213\345\212\277\345\201\207\350\256\276
+2 \342\235\214 \345\217\257\350\203\275\350\277\235\345\217\215\345\271\263\350\241\214\350\266\213\345\212\277\345\201\207\350\256\276
+3 \342\235\214 \345\217\257\350\203\275\350\277\235\345\217\215\345\271\263\350\241\214\350\266\213\345\212\277\345\201\207\350\256\276
+4 \342\235\214 \345\217\257\350\203\275\350\277\235\345\217\215\345\271\263\350\241\214\350\266\213\345\212\277\345\201\207\350\256\276
+There were 16 warnings (use warnings() to see them)
+
+已保存汇总结果: /Users/yanjiechen/Documents/Github/Sharon_local/reports/parallel_trends/parallel_trends_summary.csv
+已保存详细结果: /Users/yanjiechen/Documents/Github/Sharon_local/reports/parallel_trends/parallel_trends_detailed_results.rds
+
+=== 所有平行趋势检验完成 ===
+结束时间: 2025-12-09 18:41:11
+
+结果保存在: /Users/yanjiechen/Documents/Github/Sharon_local/reports/parallel_trends
