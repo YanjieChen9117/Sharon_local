@@ -7,8 +7,6 @@ data/nta_hourly_taxi_summary.csv
 data/nta_hourly_taxi_summary_dropoff.csv
 data/
 
-previous_meeting_reports/
-
 .venv/
 .vscode/
 
